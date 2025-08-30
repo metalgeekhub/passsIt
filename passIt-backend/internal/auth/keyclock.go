@@ -2,6 +2,9 @@ package auth
 
 import (
 	"context"
+	"crypto/tls"
+	"os"
+	"passIt/internal/models"
 	"passIt/internal/utils"
 
 	// "crypto/rsa"
@@ -20,8 +23,9 @@ import (
 	// "passIt/internal/models"
 	// "sync"
 
-	// "github.com/Nerzal/gocloak/v13"
-	// "github.com/go-resty/resty/v2"
+	"github.com/Nerzal/gocloak/v13"
+	"github.com/go-resty/resty/v2"
+
 	// "github.com/golang-jwt/jwt/v5"
 
 	"github.com/coreos/go-oidc/v3/oidc"
@@ -109,4 +113,52 @@ func New(ctx context.Context, config *Config) (*Client, error) {
 // to prevent CSRF attacks.
 func (c *Client) AuthCodeURL(state string) string {
 	return c.Oauth.AuthCodeURL(state)
+}
+
+func (c *Client) CreateKeycloakUser(ctx context.Context, user *models.User, password string) (string, error) {
+	realm := os.Getenv("KEYCLOAK_REALM")
+	// Initialize gocloak client
+	client := gocloak.NewClient(os.Getenv("KEYCLOAK_URL"))
+	restyClient := resty.New()
+	restyClient.SetTLSClientConfig(&tls.Config{InsecureSkipVerify: true})
+	client.SetRestyClient(restyClient)
+
+	// Admin login to Keycloak
+	token, err := client.LoginAdmin(
+		ctx,
+		os.Getenv("KEYCLOAK_ADMIN_USERNAME"),
+		os.Getenv("KEYCLOAK_ADMIN_PASSWORD"),
+		realm,
+	)
+	if err != nil {
+		return "", fmt.Errorf("keycloak admin login failed: %w", err)
+	}
+
+	// Prepare Keycloak user
+	kcUser := gocloak.User{
+		Username:  gocloak.StringP(user.Username),
+		Email:     gocloak.StringP(user.Email),
+		FirstName: gocloak.StringP(user.FirstName),
+		LastName:  gocloak.StringP(user.LastName),
+		Enabled:   gocloak.BoolP(true),
+	}
+
+	// Create user in Keycloak
+	userID, err := client.CreateUser(ctx, token.AccessToken, realm, kcUser)
+	if err != nil {
+		return "", fmt.Errorf("failed to create user in keycloak: %w", err)
+	}
+
+	// Set password for the user
+	cred := gocloak.CredentialRepresentation{
+		Type:      gocloak.StringP("password"),
+		Value:     gocloak.StringP(password),
+		Temporary: gocloak.BoolP(false),
+	}
+	err = client.SetPassword(ctx, token.AccessToken, userID, realm, *cred.Value, false)
+	if err != nil {
+		return "", fmt.Errorf("failed to set password in keycloak: %w", err)
+	}
+
+	return userID, nil
 }

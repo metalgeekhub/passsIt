@@ -17,14 +17,19 @@ require (
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
 	github.com/go-jose/go-jose/v4 v4.0.5 // indirect
+	github.com/go-resty/resty/v2 v2.7.0 // indirect
+	github.com/golang-jwt/jwt/v5 v5.0.0 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/jinzhu/now v1.1.5 // indirect
+	github.com/opentracing/opentracing-go v1.2.0 // indirect
+	github.com/segmentio/ksuid v1.0.4 // indirect
 )
 
 require (
 	dario.cat/mergo v1.0.1 // indirect
 	github.com/Azure/go-ansiterm v0.0.0-20210617225240-d185dfc1b5a1 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
+	github.com/Nerzal/gocloak/v13 v13.9.0
 	github.com/bytedance/sonic v1.13.2 // indirect
 	github.com/bytedance/sonic/loader v0.2.4 // indirect
 	github.com/cenkalti/backoff/v4 v4.2.1 // indirect

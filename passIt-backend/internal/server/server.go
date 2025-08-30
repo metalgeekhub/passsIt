@@ -21,8 +21,9 @@ import (
 type Server struct {
 	port int
 
-	db     database.Service
-	gormDB *gorm.DB
+	Keycloak *auth.Client
+	db       database.Service
+	gormDB   *gorm.DB
 }
 
 func NewServer(ctx context.Context, cfg *config.Config, authClient *auth.Client, redisClient *redis.Client) *http.Server {
@@ -31,8 +32,9 @@ func NewServer(ctx context.Context, cfg *config.Config, authClient *auth.Client,
 	NewServer := &Server{
 		port: cfg.App.Port,
 
-		db:     dbService,
-		gormDB: dbService.GetGormDB(),
+		Keycloak: authClient,
+		db:       dbService,
+		gormDB:   dbService.GetGormDB(),
 	}
 
 	// Declare Server config

@@ -10,6 +10,7 @@ import (
 type User struct {
 	// User represents a user in the system
 	ID          uuid.UUID      `gorm:"type:uuid;primaryKey;default:uuid_generate_v4()" json:"id"`
+	KeycloackID string         `gorm:"unique;not null" json:"keycloack_id"`
 	CreatedAt   time.Time      `json:"created_at"`
 	UpdatedAt   time.Time      `json:"updated_at"`
 	DeletedAt   gorm.DeletedAt `gorm:"index" json:"-"`

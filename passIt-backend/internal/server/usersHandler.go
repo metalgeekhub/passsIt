@@ -26,8 +26,8 @@ type FindUserByEmailRequestBody struct {
 }
 
 type CreateUserRequestBody struct {
-	User models.User `json:"user"`
-	// Password string      `json:"password"`
+	User     models.User `json:"user"`
+	Password string      `json:"password"`
 }
 
 type CreateUserReturnBody struct {
@@ -70,6 +70,16 @@ func (s *Server) CreateUserHandler(c *gin.Context) {
 	log.Printf("Input: %+v\n", input)
 
 	user := input.User
+	password := input.Password
+
+	keycloakUserID, err := s.Keycloak.CreateKeycloakUser(c, &user, password)
+	if err != nil {
+		log.Println(err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create user in keycloak"})
+		return
+	}
+
+	user.KeycloackID = keycloakUserID
 
 	log.Printf("Creating user: %+v\n", user)
 
@@ -81,7 +91,7 @@ func (s *Server) CreateUserHandler(c *gin.Context) {
 	// }
 
 	// user.KeycloackID = keyclockUserID
-	err := s.db.CreateUser(&user)
+	err = s.db.CreateUser(&user)
 	if err != nil {
 		log.Println(err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create user"})
