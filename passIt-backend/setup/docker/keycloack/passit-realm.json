@@ -1,0 +1,56 @@
+{
+  "realm": "passit",
+  "enabled": true,
+  "users": [
+    {
+      "username": "passit-admin",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Admin",
+      "lastName": "User",
+      "email": "admin@example.com",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "yP7!vR2qLz#eX9sT",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "realm-admin"
+      ],
+      "clientRoles": {
+        "realm-management": [
+          "manage-users",
+          "view-users",
+          "manage-realm",
+          "manage-clients",
+          "view-realm",
+          "view-clients",
+          "manage-events",
+          "view-events",
+          "admin"
+        ]
+      }
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "passit-backend",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "secret": "79VK0WOudj",
+      "directAccessGrantsEnabled": true,
+      "standardFlowEnabled": true,
+      "redirectUris": [
+        "http://localhost:8081/auth/callback"
+      ],
+      "webOrigins": [
+        "*"
+      ],
+      "serviceAccountsEnabled": true,
+      "authorizationServicesEnabled": true
+    }
+  ]
+}
