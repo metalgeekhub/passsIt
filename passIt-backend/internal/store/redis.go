@@ -78,12 +78,6 @@ func (r *RedisAuthManager) SetState(ctx context.Context, state string) error {
 	if err != nil {
 		return fmt.Errorf("failed to set session in Redis: %w", err)
 	}
-	log.Printf("Set state in Redis with key: %s", key)
-	stateData, err := r.client.Get(ctx, key).Result()
-	if err != nil {
-		log.Printf("failed to get state data from Redis: %w", err)
-	}
-	log.Printf("State data in Redis: %s", stateData)
 	return nil
 }
 
