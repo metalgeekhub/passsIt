@@ -46,7 +46,7 @@ func (s *service) UpdateUserById(user *models.User) error {
 	// 	log.Println("Error finding user by ID:", result.Error)
 	// 	return result.Error
 	// }
-	result := s.GetGormDB().Save(&user)
+	result := s.GetGormDB().Where("id = ?", user.ID).Updates(user)
 	if result.Error != nil {
 		log.Println("Error Updating user by ID:", result.Error)
 		return result.Error
@@ -63,4 +63,14 @@ func (s *service) GetAllUsers() ([]models.User, error) {
 	}
 
 	return users, nil
+}
+
+func (s *service) GetKeycloakIDByUserID(user *models.User) error {
+	result := s.GetGormDB().Select("keycloack_id").First(&user, "id = ?", user.ID)
+	log.Printf("Queried Keycloak ID: %s for user ID: %s\n", user.KeycloackID, user.ID)
+	if result.Error != nil {
+		log.Println("Error finding user by ID:", result.Error)
+		return result.Error
+	}
+	return nil
 }

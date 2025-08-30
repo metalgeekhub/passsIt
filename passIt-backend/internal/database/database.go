@@ -39,6 +39,8 @@ type Service interface {
 
 	UpdateUserById(user *models.User) error
 
+	GetKeycloakIDByUserID(user *models.User) error
+
 	GetAllUsers() ([]models.User, error)
 }
 

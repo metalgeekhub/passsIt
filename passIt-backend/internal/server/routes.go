@@ -50,7 +50,7 @@ func (s *Server) RegisterRoutes(ctx context.Context, authClient *auth.Client, re
 	r.GET("/health", s.healthHandler)
 	r.GET("/user/find", s.FindUserByIdHandler)
 	r.GET("/user", s.FindUserByEmailHandler)
-	r.PUT("/user", s.UpdateUserByIdHandler)
+	r.PUT("/user/update", s.UpdateUserByIdHandler)
 	r.GET("/users", s.GetAllUsersHandler)
 
 	// api := r.Group("/api")

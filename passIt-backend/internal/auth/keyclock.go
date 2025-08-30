@@ -42,6 +42,7 @@ type Config struct {
 
 // Client struct holds all components needed for authentication
 type Client struct {
+	Client   *gocloak.GoCloak      // gocloak client for Keycloak admin operations
 	Provider *oidc.Provider        // Handles OIDC protocol operations with Keycloak
 	OIDC     *oidc.IDTokenVerifier // Verifies JWT tokens from Keycloak
 	Oauth    oauth2.Config         // Manages OAuth2 flow (authorization codes, tokens)
@@ -85,8 +86,16 @@ func New(ctx context.Context, config *Config) (*Client, error) {
 		},
 	}
 
+	client := gocloak.NewClient(config.BaseURL)
+	restyClient := resty.New()
+	restyClient.SetTLSClientConfig(&tls.Config{InsecureSkipVerify: true})
+	client.SetRestyClient(restyClient)
+
 	// Return initialized client with all required components
 	return &Client{
+		Client: client,
+		// client: gocloak.NewClientWithCustomHTTPClient(config.BaseURL, insecureHttpClient),
+		// Note on field purposes:
 		// oauth2Config: Used for OAuth2 operations like:
 		// - Generating login URL (AuthCodeURL)
 		// - Exchanging auth code for tokens (Exchange)
@@ -117,14 +126,9 @@ func (c *Client) AuthCodeURL(state string) string {
 
 func (c *Client) CreateKeycloakUser(ctx context.Context, user *models.User, password string) (string, error) {
 	realm := os.Getenv("KEYCLOAK_REALM")
-	// Initialize gocloak client
-	client := gocloak.NewClient(os.Getenv("KEYCLOAK_URL"))
-	restyClient := resty.New()
-	restyClient.SetTLSClientConfig(&tls.Config{InsecureSkipVerify: true})
-	client.SetRestyClient(restyClient)
 
 	// Admin login to Keycloak
-	token, err := client.LoginAdmin(
+	token, err := c.Client.LoginAdmin(
 		ctx,
 		os.Getenv("KEYCLOAK_ADMIN_USERNAME"),
 		os.Getenv("KEYCLOAK_ADMIN_PASSWORD"),
@@ -144,7 +148,7 @@ func (c *Client) CreateKeycloakUser(ctx context.Context, user *models.User, pass
 	}
 
 	// Create user in Keycloak
-	userID, err := client.CreateUser(ctx, token.AccessToken, realm, kcUser)
+	userID, err := c.Client.CreateUser(ctx, token.AccessToken, realm, kcUser)
 	if err != nil {
 		return "", fmt.Errorf("failed to create user in keycloak: %w", err)
 	}
@@ -155,10 +159,40 @@ func (c *Client) CreateKeycloakUser(ctx context.Context, user *models.User, pass
 		Value:     gocloak.StringP(password),
 		Temporary: gocloak.BoolP(false),
 	}
-	err = client.SetPassword(ctx, token.AccessToken, userID, realm, *cred.Value, false)
+	err = c.Client.SetPassword(ctx, token.AccessToken, userID, realm, *cred.Value, false)
 	if err != nil {
 		return "", fmt.Errorf("failed to set password in keycloak: %w", err)
 	}
 
 	return userID, nil
+}
+
+func (c *Client) UpdateKeycloakUser(ctx context.Context, user *models.User) error {
+	realm := os.Getenv("KEYCLOAK_REALM")
+
+	// Admin login to Keycloak
+	token, err := c.Client.LoginAdmin(
+		ctx,
+		os.Getenv("KEYCLOAK_ADMIN_USERNAME"),
+		os.Getenv("KEYCLOAK_ADMIN_PASSWORD"),
+		realm,
+	)
+	if err != nil {
+		return fmt.Errorf("keycloak admin login failed: %w", err)
+	}
+	// Prepare Keycloak user
+	kcUser := gocloak.User{
+		ID:        gocloak.StringP(user.KeycloackID),
+		Username:  gocloak.StringP(user.Username),
+		Email:     gocloak.StringP(user.Email),
+		FirstName: gocloak.StringP(user.FirstName),
+		LastName:  gocloak.StringP(user.LastName),
+		Enabled:   gocloak.BoolP(user.IsActive),
+	}
+	// Update user in Keycloak
+	err = c.Client.UpdateUser(ctx, token.AccessToken, realm, kcUser)
+	if err != nil {
+		return fmt.Errorf("failed to update user in keycloak: %w", err)
+	}
+	return nil
 }

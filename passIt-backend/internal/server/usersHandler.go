@@ -149,9 +149,30 @@ func (s *Server) UpdateUserByIdHandler(c *gin.Context) {
 	if !utils.DecodeServerInput(c, &user) {
 		return // Stop processing if decode fails
 	}
+
+	log.Printf("Received user update request: %+v\n", user)
+
 	err := s.db.UpdateUserById(&user)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update user"})
+		return
+	}
+
+	err = s.db.GetKeycloakIDByUserID(&user)
+	if err != nil {
+		log.Println(err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get Keycloak ID"})
+		return
+	}
+
+	// log.Printf("Fetched Keycloak ID: %s for user ID: %s\n", keycloakId, user.ID)
+	// user.KeycloackID = keycloakId
+
+	log.Printf("Updating user in Keycloak: %+v\n", user)
+	err = s.Keycloak.UpdateKeycloakUser(c, &user)
+	if err != nil {
+		log.Println(err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update user in Keycloak"})
 		return
 	}
 
