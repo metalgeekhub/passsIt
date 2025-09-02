@@ -20,7 +20,7 @@ const isActive = (path: string) => {
             <RouterLink class="flex flex-shrink-0 items-center mr-4" to="/">
               <img class="h-10 w-auto" :src="logo" alt="Vue Jobs" />
               <span class="hidden md:block text-white text-2xl font-bold ml-2"
-                >Vue Jobs</span
+                >PassIt</span
               >
             </RouterLink>
             <div class="md:ml-auto">
@@ -37,6 +37,10 @@ const isActive = (path: string) => {
                   to="/jobs/add"
                   :class="[isActive('/jobs/add') ? 'bg-blue-900' : 'hover:bg-gray-900 hover:text-white', 'text-white', 'rounded-md', 'px-3', 'py-2']"
                   >Add Job</RouterLink>
+                <RouterLink
+                  to="/login"
+                  :class="[isActive('/jobs/add') ? 'bg-blue-50' : 'hover:bg-blue-100 hover:text-blue-900', 'bg-blue-50 text-blue-700 font-bold shadow-sm transition', 'rounded-md', 'px-3', 'py-2']"
+                  >Login</RouterLink>
               </div>
             </div>
           </div>

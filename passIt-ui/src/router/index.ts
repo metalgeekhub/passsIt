@@ -5,6 +5,7 @@ import NotFoundView from '@/views/NotFoundView.vue';
 import JobView from '@/views/JobView.vue';
 import AddJobView from '@/views/AddJobView.vue';
 import EditJobView from '@/views/EditJobView.vue';
+import LoginRedirect from '@/views/LoginRedirect.vue';
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -15,12 +16,17 @@ const router = createRouter({
       component: HomeView,
     },
     {
+      path: '/login',
+      name: 'login',
+      component: LoginRedirect
+    },
+    {
         path: '/jobs',
         name: 'jobs',
         component: JobsView,
     },
     {
-      path: '/jobs/:id',
+      path: '/users/:id',
       name: 'job',
       component: JobView,
     },

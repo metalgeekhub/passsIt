@@ -128,6 +128,7 @@ func (a *AuthHandler) CallbackHandler(c *gin.Context) {
 		true,                                    // secure (HTTPS only)
 		true,                                    // httpOnly (prevents JavaScript access)
 	)
+	c.Redirect(http.StatusTemporaryRedirect, "http://localhost:3000")
 }
 
 func (a *AuthHandler) tokenExchange(c *gin.Context) (*oauth2.Token, error) {

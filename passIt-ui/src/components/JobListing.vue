@@ -1,37 +1,34 @@
 <script setup lang="ts">
 import { reactive, defineProps, onMounted } from 'vue';
 import PulseLoader from 'vue-spinner/src/PulseLoader.vue';
-import { type Job } from '@/models/Jobs'
+import type { User } from '@/models/User';
 import JobListings from '@/components/JobListings.vue';
-import axios from 'axios';
+import privateAxios from '../api/axios';
 
 type JobsResponse = {
-    code: number;
-    data: {
-        jobs: Job[];
-    };
+    users: User[];
 }
 
 defineProps({
     limit: Number,
     showAll: {
         type: Boolean,
-        default: false
+        default: true
     },
 });
 
 const state = reactive({
-    jobs: <Job[]>([]),
+    users: [] as User[],
     isLoading: true,
 });
 
 onMounted(async () => {
     try {
-        const response = await axios.get<JobsResponse>('http://localhost:8080/jobs');
-        console.log('Jobs fetched:', response.data.data.jobs);
-        state.jobs = response.data.data.jobs;
+        const response = await privateAxios.get<User[]>('http://localhost:8080/users',);
+        console.log('Users fetched:', response.data);
+        state.users = response.data;
     } catch (error) {
-        console.error('Error fetching jobs:', error);
+        console.error('Error fetching users:', error);
     } finally {
         state.isLoading = false;
     }
@@ -51,7 +48,7 @@ onMounted(async () => {
             </div>
             <!-- Show Jobs -->
             <div v-else class="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <JobListings v-for="job in state.jobs.slice(0, limit || state.jobs.length)" :key="job.id" :job="job" />
+                <JobListings v-for="user in state.users.slice(0, 3)" :key="user.username" :user="user" />
             </div>
         </div>
     </section>

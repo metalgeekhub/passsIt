@@ -28,7 +28,7 @@ func (m *AuthMiddleware) RequireAuth() gin.HandlerFunc {
 		// Get session from cookie
 		sessionID, err := c.Cookie("session_id")
 		if err != nil {
-			c.Redirect(http.StatusTemporaryRedirect, "/")
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 			c.Abort()
 			return
 		}
@@ -37,7 +37,7 @@ func (m *AuthMiddleware) RequireAuth() gin.HandlerFunc {
 		if err != nil {
 			// Clear invalid session cookie
 			c.SetCookie("session_id", "", -1, "/", "", true, true)
-			c.Redirect(http.StatusTemporaryRedirect, "/")
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 			c.Abort()
 			return
 		}
@@ -50,7 +50,7 @@ func (m *AuthMiddleware) RequireAuth() gin.HandlerFunc {
 			// The token is invalid - let's clean up and redirect
 			m.sessionStore.Delete(c, sessionID)
 			c.SetCookie("session_id", "", -1, "/", "", true, true)
-			c.Redirect(http.StatusTemporaryRedirect, "/")
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 			c.Abort()
 			return
 		}
