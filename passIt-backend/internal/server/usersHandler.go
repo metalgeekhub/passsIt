@@ -12,11 +12,6 @@ import (
 	"github.com/google/uuid"
 )
 
-type LoginUserRequestBody struct {
-	Username string `json:"username"`
-	Password string `json:"password"`
-}
-
 type FindUserByIdRequestBody struct {
 	ID uuid.UUID `json:"id"`
 }
@@ -35,27 +30,43 @@ type CreateUserReturnBody struct {
 	KeycloackUserID string      `json:"keycloak_user_id"`
 }
 
-// func (s *Server) LoginUserHandler(c *gin.Context) {
-// 	var input LoginUserRequestBody
-// 	// k := keyclock.NewKeycloakClient()
-// 	json.NewDecoder(c.Request.Body).Decode(&input)
+type DeleteUserByIdRequestBody struct {
+	ID uuid.UUID `json:"id"`
+}
 
-// 	tokens, err := keyclock.LoginUser(c, input.Username, input.Password)
-// 	if err != nil {
-// 		log.Println("Error logging in with user:", err)
-// 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
-// 		return
-// 	}
-// 	defer c.Request.Body.Close()
+type LoginUserRequestBody struct {
+	Email    string `json:"email"`
+	Password string `json:"password"`
+}
 
-// 	// c.Header("Authorization", "Bearer "+token)
-// 	c.JSON(http.StatusOK, PassItResponseBody{
-// 		Code: codes.UserLoggedInSuccessfully,
-// 		Data: tokens,
-// 	},
-// 	)
+func (s *Server) LoginHandler(c *gin.Context) {
+	var input LoginUserRequestBody
 
-// }
+	if !utils.DecodeServerInput(c, &input) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Bad request"})
+		c.Abort()
+		return
+	}
+
+	// TODO: hash password and check with database if it is correct
+	// Then get from database the userID
+	user, err := s.db.FindUserByEmail(input.Email)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "User with this email is not exists."})
+		c.Abort()
+		return
+	}
+
+	token, err := utils.GenerateJWTToken(user.ID)
+	if err != nil {
+		log.Printf("Error when generating JWT token for user: %v", err)
+		c.JSON(http.StatusNotFound, gin.H{"error": "Error generating JWT token for this user."})
+		c.Abort()
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"token": token})
+}
 
 func (s *Server) CreateUserHandler(c *gin.Context) {
 	var input CreateUserRequestBody
@@ -70,28 +81,13 @@ func (s *Server) CreateUserHandler(c *gin.Context) {
 	log.Printf("Input: %+v\n", input)
 
 	user := input.User
-	password := input.Password
+	// password := input.Password
 
-	keycloakUserID, err := s.Keycloak.CreateKeycloakUser(c, &user, password)
-	if err != nil {
-		log.Println(err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create user in keycloak"})
-		return
-	}
-
-	user.KeycloackID = keycloakUserID
+	// REMOVED THE KEYCLOAK LOGIC
 
 	log.Printf("Creating user: %+v\n", user)
 
-	// keyclockUserID, err := k.CreateUser(&user, input.Password)
-	// if err != nil {
-	// 	log.Println(err)
-	// 	c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create user in Keycloak"})
-	// 	return
-	// }
-
-	// user.KeycloackID = keyclockUserID
-	err = s.db.CreateUser(&user)
+	err := s.db.CreateUser(&user)
 	if err != nil {
 		log.Println(err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create user"})
@@ -168,13 +164,7 @@ func (s *Server) UpdateUserByIdHandler(c *gin.Context) {
 	// log.Printf("Fetched Keycloak ID: %s for user ID: %s\n", keycloakId, user.ID)
 	// user.KeycloackID = keycloakId
 
-	log.Printf("Updating user in Keycloak: %+v\n", user)
-	err = s.Keycloak.UpdateKeycloakUser(c, &user)
-	if err != nil {
-		log.Println(err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update user in Keycloak"})
-		return
-	}
+	// REMOVED THE KEYCLOAK LOGIC
 
 	defer c.Request.Body.Close()
 
@@ -192,4 +182,27 @@ func (s *Server) GetAllUsersHandler(c *gin.Context) {
 	defer c.Request.Body.Close()
 
 	c.JSON(http.StatusOK, users)
+}
+
+func (s *Server) DeleteUserByIdHandler(c *gin.Context) {
+	var input DeleteUserByIdRequestBody
+	if !utils.DecodeServerInput(c, &input) {
+		return // Stop processing if decode fails
+	}
+	// Get Keycloak ID before deleting user
+	// TODO: Make this function to return Keycloak ID directly or create another one.
+	err := s.db.GetKeycloakIDByUserID(&models.User{ID: input.ID})
+	if err != nil {
+		log.Println(err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get Keycloak ID"})
+		return
+	}
+	// REMOVED THE KEYCLOAK LOGIC
+	// Delete user in local DB
+	err = s.db.DeleteUserById(input.ID)
+	if err != nil {
+		log.Println(err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete user"})
+		return
+	}
 }

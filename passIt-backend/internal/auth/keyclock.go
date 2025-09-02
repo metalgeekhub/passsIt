@@ -124,10 +124,8 @@ func (c *Client) AuthCodeURL(state string) string {
 	return c.Oauth.AuthCodeURL(state)
 }
 
-func (c *Client) CreateKeycloakUser(ctx context.Context, user *models.User, password string) (string, error) {
+func (c *Client) getAdminToken(ctx context.Context) (string, error) {
 	realm := os.Getenv("KEYCLOAK_REALM")
-
-	// Admin login to Keycloak
 	token, err := c.Client.LoginAdmin(
 		ctx,
 		os.Getenv("KEYCLOAK_ADMIN_USERNAME"),
@@ -136,6 +134,16 @@ func (c *Client) CreateKeycloakUser(ctx context.Context, user *models.User, pass
 	)
 	if err != nil {
 		return "", fmt.Errorf("keycloak admin login failed: %w", err)
+	}
+	return token.AccessToken, nil
+}
+
+func (c *Client) CreateKeycloakUser(ctx context.Context, user *models.User, password string) (string, error) {
+	realm := os.Getenv("KEYCLOAK_REALM")
+
+	accessToken, err := c.getAdminToken(ctx)
+	if err != nil {
+		return "", err
 	}
 
 	// Prepare Keycloak user
@@ -148,7 +156,7 @@ func (c *Client) CreateKeycloakUser(ctx context.Context, user *models.User, pass
 	}
 
 	// Create user in Keycloak
-	userID, err := c.Client.CreateUser(ctx, token.AccessToken, realm, kcUser)
+	userID, err := c.Client.CreateUser(ctx, accessToken, realm, kcUser)
 	if err != nil {
 		return "", fmt.Errorf("failed to create user in keycloak: %w", err)
 	}
@@ -159,7 +167,7 @@ func (c *Client) CreateKeycloakUser(ctx context.Context, user *models.User, pass
 		Value:     gocloak.StringP(password),
 		Temporary: gocloak.BoolP(false),
 	}
-	err = c.Client.SetPassword(ctx, token.AccessToken, userID, realm, *cred.Value, false)
+	err = c.Client.SetPassword(ctx, accessToken, userID, realm, *cred.Value, false)
 	if err != nil {
 		return "", fmt.Errorf("failed to set password in keycloak: %w", err)
 	}
@@ -170,15 +178,9 @@ func (c *Client) CreateKeycloakUser(ctx context.Context, user *models.User, pass
 func (c *Client) UpdateKeycloakUser(ctx context.Context, user *models.User) error {
 	realm := os.Getenv("KEYCLOAK_REALM")
 
-	// Admin login to Keycloak
-	token, err := c.Client.LoginAdmin(
-		ctx,
-		os.Getenv("KEYCLOAK_ADMIN_USERNAME"),
-		os.Getenv("KEYCLOAK_ADMIN_PASSWORD"),
-		realm,
-	)
+	accessToken, err := c.getAdminToken(ctx)
 	if err != nil {
-		return fmt.Errorf("keycloak admin login failed: %w", err)
+		return err
 	}
 	// Prepare Keycloak user
 	kcUser := gocloak.User{
@@ -190,9 +192,25 @@ func (c *Client) UpdateKeycloakUser(ctx context.Context, user *models.User) erro
 		Enabled:   gocloak.BoolP(user.IsActive),
 	}
 	// Update user in Keycloak
-	err = c.Client.UpdateUser(ctx, token.AccessToken, realm, kcUser)
+	err = c.Client.UpdateUser(ctx, accessToken, realm, kcUser)
 	if err != nil {
 		return fmt.Errorf("failed to update user in keycloak: %w", err)
 	}
+	return nil
+}
+
+func (c *Client) DeleteKeycloakUser(ctx context.Context, keycloakID string) error {
+	realm := os.Getenv("KEYCLOAK_REALM")
+
+	accessToken, err := c.getAdminToken(ctx)
+	if err != nil {
+		return err
+	}
+	// Delete user in Keycloak
+	err = c.Client.DeleteUser(ctx, accessToken, realm, keycloakID)
+	if err != nil {
+		return fmt.Errorf("failed to delete user in keycloak: %w", err)
+	}
+
 	return nil
 }

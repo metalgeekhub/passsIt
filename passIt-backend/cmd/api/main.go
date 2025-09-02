@@ -9,7 +9,6 @@ import (
 	"syscall"
 	"time"
 
-	"passIt/internal/auth"
 	"passIt/internal/config"
 	"passIt/internal/server"
 
@@ -49,15 +48,10 @@ func main() {
 		return
 	}
 
-	authClient, err := auth.New(ctx, config.Auth)
-	if err != nil {
-		log.Fatalf("failed to initialize auth client : %v", err)
-	}
-
 	// initialize redis client
 	rdb := redis.NewClient(config.RedisClient)
 
-	server := server.NewServer(ctx, config, authClient, rdb)
+	server := server.NewServer(ctx, config, rdb)
 
 	// Create a done channel to signal when the shutdown is complete
 	done := make(chan bool, 1)

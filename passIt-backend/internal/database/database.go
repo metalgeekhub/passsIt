@@ -42,6 +42,8 @@ type Service interface {
 	GetKeycloakIDByUserID(user *models.User) error
 
 	GetAllUsers() ([]models.User, error)
+
+	DeleteUserById(id uuid.UUID) error
 }
 
 type service struct {

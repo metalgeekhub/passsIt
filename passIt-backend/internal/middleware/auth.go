@@ -1,69 +1,43 @@
 package middleware
 
 import (
-	"context"
+	"log"
 	"net/http"
-	"passIt/internal/auth"
-	"passIt/internal/store"
+	"passIt/internal/utils"
+	"strings"
 
-	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/gin-gonic/gin"
 )
 
-type AuthMiddleware struct {
-	authClient   *auth.Client
-	sessionStore store.SessionStore
-	clientID     string
-}
-
-// NewAuthMiddleware creates a new authentication middleware with OIDC verification
-func NewAuthMiddleware(c context.Context, authClient *auth.Client, sessionStore store.SessionStore) *AuthMiddleware {
-	return &AuthMiddleware{
-		authClient:   authClient,
-		sessionStore: sessionStore,
-	}
-}
-func (m *AuthMiddleware) RequireAuth() gin.HandlerFunc {
+// AuthenticationMiddleware checks if the user has a valid JWT token
+func AuthenticationMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// Get session from cookie
-		sessionID, err := c.Cookie("session_id")
-		if err != nil {
-			c.Redirect(http.StatusTemporaryRedirect, "/")
+		tokenString := c.GetHeader("Authorization")
+		if tokenString == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Missing authentication token"})
 			c.Abort()
-			return
-		}
-		// Get session data from Redis
-		sessionData, err := m.sessionStore.Get(c, sessionID)
-		if err != nil {
-			// Clear invalid session cookie
-			c.SetCookie("session_id", "", -1, "/", "", true, true)
-			c.Redirect(http.StatusTemporaryRedirect, "/")
-			c.Abort()
-			return
-		}
-		// Verify the access token using the OIDC provider
-		token, err := m.authClient.Provider.Verifier(&oidc.Config{
-			SkipClientIDCheck: true, // Access tokens don't require client ID check
-		}).Verify(c, sessionData.AccessToken)
-
-		if err != nil {
-			// The token is invalid - let's clean up and redirect
-			m.sessionStore.Delete(c, sessionID)
-			c.SetCookie("session_id", "", -1, "/", "", true, true)
-			c.Redirect(http.StatusTemporaryRedirect, "/")
-			c.Abort()
-			return
-		}
-		// Extract claims from the token
-		var claims map[string]interface{}
-		if err := token.Claims(&claims); err != nil {
-			c.AbortWithStatus(http.StatusInternalServerError)
 			return
 		}
 
-		// Store the validated claims and session in the context
-		c.Set("user_session", sessionData)
-		c.Set("user_claims", claims)
+		// The Token should be prefixted with Bearer
+		tokenParts := strings.Split(tokenString, " ")
+		if len(tokenParts) != 2 || tokenParts[0] != "Bearer" {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid authentication token"})
+			c.Abort()
+			return
+		}
+
+		tokenString = tokenParts[1]
+
+		claims, err := utils.VerifyToken(tokenString)
+		if err != nil {
+			log.Printf("Error validating the JWT token: %v", err)
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid authentication token"})
+			c.Abort()
+			return
+		}
+
+		c.Set("user_id", claims["user_id"])
 		c.Next()
 	}
 }

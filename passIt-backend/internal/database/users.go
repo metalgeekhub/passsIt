@@ -74,3 +74,15 @@ func (s *service) GetKeycloakIDByUserID(user *models.User) error {
 	}
 	return nil
 }
+
+func (s *service) DeleteUserById(id uuid.UUID) error {
+	result := s.GetGormDB().Delete(&models.User{}, "id = ?", id)
+	if result.Error != nil {
+		log.Println("Error deleting user by ID:", result.Error)
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return errors.New("no rows affected, user not deleted")
+	}
+	return nil
+}
