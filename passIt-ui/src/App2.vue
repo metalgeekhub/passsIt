@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
+import { checkAuth } from '@/composables/useAuth'
 
 const name = ref<string>('John Doe');
 const status = ref<string>('active');
@@ -29,6 +30,7 @@ const deleteTask = (index: number) => {
 
 onMounted(async () => {
   try {
+    checkAuth()
     const response = await fetch('https://jsonplaceholder.typicode.com/todos');
     const data = await response.json();
     tasks.value = data.map((task: { title: string }) => task.title);

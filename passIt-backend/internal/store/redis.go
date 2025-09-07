@@ -14,6 +14,7 @@ import (
 // SessionData represents the data we'll store for each session
 type SessionData struct {
 	AccessToken string    `json:"access_token"`
+	IDToken     string    `json:"token_id"`
 	UserInfo    UserInfo  `json:"user_info"`
 	CreatedAt   time.Time `json:"created_at"`
 }

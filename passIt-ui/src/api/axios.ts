@@ -11,15 +11,15 @@ const authAxios = axios.create({
 });
 
 // Interceptor for handling 401 Unauthorized globally
-authAxios.interceptors.response.use(
-  response => response,
-  error => {
-    if (error.response && error.response.status === 401) {
-      window.location.href = '/login';
-    }
-    return Promise.reject(error);
-  }
-);
+// authAxios.interceptors.response.use(
+//   response => response,
+//   error => {
+//     if (error.response && error.response.status === 401) {
+//       window.location.href = '/login';
+//     }
+//     return Promise.reject(error);
+//   }
+// );
 
 export default authAxios;
 export { publicAxios };

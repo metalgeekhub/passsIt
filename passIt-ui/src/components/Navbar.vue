@@ -1,11 +1,17 @@
 <script setup lang="ts">
 import { RouterLink, useRoute } from 'vue-router';
 import logo from '@/assets/images/logo.png';
+import { isAuthenticated } from '@/composables/useAuth';
+import { onMounted } from 'vue';
 
 const isActive = (path: string) => {
   const route = useRoute();
   return route.path === path;
 }
+
+onMounted(async () => {
+  console.log(isAuthenticated)
+});
 
 </script>
 
@@ -30,17 +36,25 @@ const isActive = (path: string) => {
                   :class="[isActive('/') ? 'bg-blue-900' : 'hover:bg-gray-900 hover:text-white', 'text-white', 'rounded-md', 'px-3', 'py-2']"
                   >Home</RouterLink>
                 <RouterLink
+                  v-if="isAuthenticated"
                   to="/jobs"
                   :class="[isActive('/jobs') ? 'bg-blue-900' : 'hover:bg-gray-900 hover:text-white', 'text-white', 'rounded-md', 'px-3', 'py-2']"
                   >Jobs</RouterLink>
                 <RouterLink
+                  v-if="isAuthenticated"
                   to="/jobs/add"
                   :class="[isActive('/jobs/add') ? 'bg-blue-900' : 'hover:bg-gray-900 hover:text-white', 'text-white', 'rounded-md', 'px-3', 'py-2']"
                   >Add Job</RouterLink>
                 <RouterLink
+                  v-if="!isAuthenticated"
                   to="/login"
-                  :class="[isActive('/jobs/add') ? 'bg-blue-50' : 'hover:bg-blue-100 hover:text-blue-900', 'bg-blue-50 text-blue-700 font-bold shadow-sm transition', 'rounded-md', 'px-3', 'py-2']"
+                  :class="[isActive('/login') ? 'bg-blue-50' : 'hover:bg-blue-100 hover:text-blue-900', 'bg-blue-50 text-blue-700 font-bold shadow-sm transition', 'rounded-md', 'px-3', 'py-2']"
                   >Login</RouterLink>
+                <RouterLink
+                  v-if="isAuthenticated"
+                  to="/logout"
+                  :class="[isActive('/logout') ? 'bg-blue-50' : 'hover:bg-blue-100 hover:text-blue-900', 'bg-blue-50 text-blue-700 font-bold shadow-sm transition', 'rounded-md', 'px-3', 'py-2']"
+                  >Logout</RouterLink>
               </div>
             </div>
           </div>

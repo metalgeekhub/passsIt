@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"passIt/internal/auth"
 	"passIt/internal/constant"
 	"passIt/internal/store"
@@ -30,6 +31,8 @@ func NewAuthHandler(authClient *auth.Client, authStore store.AuthStore, sessionS
 		sessionStore: sessionStore,
 	}
 }
+
+var frontendURL = os.Getenv("FRONTEND_URL")
 
 // generateRandomSecureString creates a random secure string
 func generateRandomSecureString() (string, error) {
@@ -77,6 +80,38 @@ func (a *AuthHandler) LoginHandler(c *gin.Context) {
 	c.Redirect(http.StatusTemporaryRedirect, authURL)
 }
 
+// LogoutHandler logs the user out by deleting the session and clearing the cookie
+func (a *AuthHandler) LogoutHandler(c *gin.Context) {
+	sessionID, err := c.Cookie("session_id")
+	log.Printf("Session_id=%s", sessionID)
+
+	var sessionData *store.SessionData
+	if err == nil && sessionID != "" {
+		// Get session data before deleting
+		sd, getErr := a.sessionStore.Get(c, sessionID)
+		if getErr == nil {
+			sessionData = sd
+		}
+		// Now delete session from store
+		_ = a.sessionStore.Delete(c, sessionID)
+	}
+
+	// Clear the session_id cookie
+	c.SetCookie(
+		"session_id",
+		"",
+		-1, // MaxAge negative deletes the cookie
+		"/",
+		"",
+		true, // secure
+		true, // httpOnly
+	)
+
+	// Optionally, redirect to Keycloak's logout endpoint to log out globally:
+	logoutURL := a.authClient.GetLogOutURL(sessionData.IDToken)
+	c.Redirect(http.StatusTemporaryRedirect, logoutURL)
+}
+
 func (a *AuthHandler) CallbackHandler(c *gin.Context) {
 	if err := a.validateStateSession(c); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to validate state session"})
@@ -89,7 +124,7 @@ func (a *AuthHandler) CallbackHandler(c *gin.Context) {
 		log.Printf("Token exchange error: %v", err)
 		return
 	}
-	userInfo, err := a.validateAndGetClaimsIDToken(c, oauthToken)
+	userInfo, tokenID, err := a.validateAndGetClaimsIDToken(c, oauthToken)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to validate and get claims id token"})
 		log.Printf("ID token validation error: %v", err)
@@ -101,9 +136,17 @@ func (a *AuthHandler) CallbackHandler(c *gin.Context) {
 		log.Printf("Session ID generation error: %v", err)
 		return
 	}
+
+	// rawIDToken, ok := oauthToken.Extra("id_token").(string)
+	// if !ok {
+	// 	c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get token ID"})
+	// 	log.Printf("Failed to get token ID")
+	// 	return
+	// }
 	// Create session data
 	sessionData := store.SessionData{
 		AccessToken: oauthToken.AccessToken, // From Keycloak
+		IDToken:     tokenID,
 		UserInfo: store.UserInfo{
 			Username: userInfo.Username,
 			Email:    userInfo.Email,
@@ -128,7 +171,7 @@ func (a *AuthHandler) CallbackHandler(c *gin.Context) {
 		true,                                    // secure (HTTPS only)
 		true,                                    // httpOnly (prevents JavaScript access)
 	)
-	c.Redirect(http.StatusTemporaryRedirect, "http://localhost:3000")
+	c.Redirect(http.StatusTemporaryRedirect, frontendURL)
 }
 
 func (a *AuthHandler) tokenExchange(c *gin.Context) (*oauth2.Token, error) {
@@ -154,24 +197,25 @@ type oidcClaims struct {
 }
 
 // ValidateIDToken verifies the id token from the oauth2token
-func (a *AuthHandler) validateAndGetClaimsIDToken(c *gin.Context, oauth2Token *oauth2.Token) (*oidcClaims, error) {
+func (a *AuthHandler) validateAndGetClaimsIDToken(c *gin.Context, oauth2Token *oauth2.Token) (*oidcClaims, string, error) {
 	insecureCtx := utils.InsecureHttpContext(c)
 
 	// Get and validate the ID token - this proves the user's identity
 	rawIDToken, ok := oauth2Token.Extra("id_token").(string)
+	log.Println("The rawIDToken:", rawIDToken)
 	if !ok {
-		return nil, errors.New("no ID token found")
+		return nil, "", errors.New("no ID token found")
 	}
 	// Verify the ID token
 	idToken, err := a.authClient.OIDC.Verify(insecureCtx, rawIDToken)
 	if err != nil {
-		return nil, errors.New("failed to verify id token")
+		return nil, "", errors.New("failed to verify id token")
 	}
 	claims := oidcClaims{}
 	if err := idToken.Claims(&claims); err != nil {
-		return nil, errors.New("failed to get user info")
+		return nil, "", errors.New("failed to get user info")
 	}
-	return &claims, nil
+	return &claims, rawIDToken, nil
 }
 
 func (a *AuthHandler) validateStateSession(c *gin.Context) error {

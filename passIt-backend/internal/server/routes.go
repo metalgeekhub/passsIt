@@ -40,6 +40,7 @@ func (s *Server) RegisterRoutes(ctx context.Context, authClient *auth.Client, re
 	auth := r.Group("/auth")
 	{
 		auth.GET("/login", authHandler.LoginHandler)
+		auth.GET("/logout", authHandler.LogoutHandler)
 		auth.GET("/callback", authHandler.CallbackHandler)
 	}
 

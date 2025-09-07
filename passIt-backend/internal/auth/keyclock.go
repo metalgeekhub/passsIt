@@ -3,6 +3,8 @@ package auth
 import (
 	"context"
 	"crypto/tls"
+	"log"
+	"net/url"
 	"os"
 	"passIt/internal/models"
 	"passIt/internal/utils"
@@ -114,6 +116,14 @@ func New(ctx context.Context, config *Config) (*Client, error) {
 		// - Manages provider metadata
 		Provider: provider,
 	}, nil
+}
+
+func (c *Client) GetLogOutURL(tokenHint string) string {
+	authEndpoint := c.Oauth.Endpoint.AuthURL[:len(c.Oauth.Endpoint.AuthURL)-len("/auth")]
+	frontendURL := os.Getenv("FRONTEND_URL")
+	// realm := os.Getenv("KEYCLOAK_REALM")
+	log.Println(tokenHint)
+	return fmt.Sprintf("%s/logout?id_token_hint=%s&post_logout_redirect_uri=%s", authEndpoint, tokenHint, url.QueryEscape(frontendURL))
 }
 
 // AuthCodeURL generates the login URL for OAuth2 authorization code flow.
