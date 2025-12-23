@@ -1,13 +1,14 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { checkAuth, isAuthenticated } from '@/composables/useAuth';
 import HomeView from '../views/HomeView.vue';
-import JobsView from '../views/JobsView.vue';
 import NotFoundView from '@/views/NotFoundView.vue';
-import JobView from '@/views/JobView.vue';
-import AddJobView from '@/views/AddJobView.vue';
-import EditJobView from '@/views/EditJobView.vue';
 import LoginRedirectView from '@/views/LoginRedirectView.vue';
 import LogoutView from '@/views/LogoutView.vue';
+import SignupView from '@/views/SignupView.vue';
+import ProfileView from '@/views/ProfileView.vue';
+import UsersView from '@/views/UsersView.vue';
+import AddUserView from '@/views/AddUserView.vue';
+import EditUserView from '@/views/EditUserView.vue';
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -25,34 +26,44 @@ const router = createRouter({
       meta: { public: true }
     },
     {
+      path: '/auth/login',
+      redirect: '/login'
+    },
+    {
+      path: '/signup',
+      name: 'signup',
+      component: SignupView,
+      meta: { public: true }
+    },
+    {
       path: '/logout',
       name: 'logout',
       component: LogoutView,
       meta: { public: false }
     },
     {
-        path: '/jobs',
-        name: 'jobs',
-        component: JobsView,
-        meta: { public: false }
-    },
-    {
-      path: '/users/:id',
-      name: 'job',
-      component: JobView,
+      path: '/profile',
+      name: 'profile',
+      component: ProfileView,
       meta: { public: false }
     },
     {
-      path: '/jobs/add',
-      name: 'add-job',
-      component: AddJobView,
-      meta: { public: false }
+      path: '/users',
+      name: 'users',
+      component: UsersView,
+      meta: { public: false, requiresAdmin: true }
     },
     {
-      path: '/jobs/edit/:id',
-      name: 'edit-job',
-      component: EditJobView,
-      meta: { public: false }
+      path: '/users/add',
+      name: 'add-user',
+      component: AddUserView,
+      meta: { public: false, requiresAdmin: true }
+    },
+    {
+      path: '/users/edit/:id',
+      name: 'edit-user',
+      component: EditUserView,
+      meta: { public: false, requiresAdmin: true }
     },
     {
       path: '/:catchAll(.*)',
@@ -76,7 +87,7 @@ router.beforeEach(async (to, from, next) => {
   if (!to.meta.public) {
     await checkAuth();
     if (!isAuthenticated.value) {
-      return next('/dev/null');
+      return next('/login');
     }
   }
   next();

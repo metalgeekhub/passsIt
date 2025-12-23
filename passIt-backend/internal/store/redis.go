@@ -23,7 +23,7 @@ type SessionData struct {
 type UserInfo struct {
 	Username string `json:"username"`
 	Email    string `json:"email"`
-	// Add other user fields you need
+	IsAdmin  bool   `json:"is_admin"`
 }
 
 // SessionStore defines the contract for session management

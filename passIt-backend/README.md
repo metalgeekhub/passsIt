@@ -11,6 +11,7 @@ A modern password management and sharing platform built with Go, Keycloak, and P
 - [Project Structure](#project-structure)
 - [Environment Variables](#environment-variables)
 - [PassIt Authentication](#authentication)
+- [API Authentication Guide](API_AUTHENTICATION.md) - Using the API with different clients
 - [License](#license)
 
 ## Getting Started
@@ -100,6 +101,22 @@ Run the test suite:
 make test
 ```
 
+Run specific package tests:
+```bash
+# Test utilities (100% coverage)
+go test ./internal/utils -v
+
+# Test all packages
+go test ./internal/... -v
+```
+
+**Current Test Coverage**:
+- ✅ Utils: 100% coverage (DecodeServerInput, InsecureHttpContext)
+- ✅ Models: User struct validation, UUID generation
+- ✅ Response Codes: Code definitions and uniqueness
+- ✅ Configuration: Environment variable handling
+- ✅ Server: HTTP helpers and status codes
+
 Clean up binary from the last build:
 ```bash
 make clean
@@ -129,9 +146,30 @@ REDIS_PASSWORD=redis_password
 # Keycloak
 KEYCLOAK_URL=https://localhost:8443
 KEYCLOAK_REALM=passit
-KEYCLOAK_CLIENT_ID=passit-app
+KEYCLOAK_CLIENT_ID=passit-backend
 KEYCLOAK_CLIENT_SECRET=your_client_secret
+KEYCLOAK_ADMIN_USERNAME=passit-admin
+KEYCLOAK_ADMIN_PASSWORD=yP7!vR2qLz#eX9sT
+REDIRECT_URL=http://localhost:8080/auth/callback
+FRONTEND_URL=http://localhost:3000
 ```
+
+## Architecture
+
+### Service Layer Pattern
+The backend follows a clean architecture with separation of concerns:
+
+- **Handlers** (`internal/server/`): HTTP layer - request validation, response formatting
+- **Services** (`internal/services/`): Business logic, orchestration, transaction management
+- **Database** (`internal/database/`): Data access layer using GORM
+- **Auth** (`internal/auth/`): Keycloak integration with interface-based design
+- **Middleware** (`internal/middleware/`): Authentication, logging, CORS
+
+### Key Features
+- **Service Layer**: Encapsulates business logic with automatic rollback on failures
+- **Interface-Based Design**: Loose coupling for easier testing and mocking
+- **Dual Authentication**: Supports both session cookies (browser) and Bearer tokens (API clients)
+- **PostgreSQL as Source of Truth**: User data stored in PostgreSQL, Keycloak for authentication only
 
 ## Authentication
 
@@ -151,21 +189,102 @@ Keycloak handles user login, registration, and token issuance for secure access 
   Most backend routes require a valid access token. The backend verifies tokens using Keycloak’s OIDC endpoints.
 
 - **Session Management:**  
-  User sessions and tokens are managed using Redis for fast access and scalability.
+  - **OAuth State**: Stored in secure signed cookies (no Redis needed for OAuth flow)
+  - **User Sessions**: Stored in Redis after successful login for scalability and security
+  - Session data includes access tokens, user info, and expires after 24 hours
 
 - **Configuration:**  
   Keycloak connection details (URL, realm, client ID, client secret) are set via environment variables in your `.env` file:
   ```env
   KEYCLOAK_URL=https://localhost:8443
   KEYCLOAK_REALM=passit
-  KEYCLOAK_CLIENT_ID=passit-app
+  KEYCLOAK_CLIENT_ID=passit-backend
   KEYCLOAK_CLIENT_SECRET=your_client_secret
+  KEYCLOAK_ADMIN_USERNAME=passit-admin
+  KEYCLOAK_ADMIN_PASSWORD=your_admin_password
   ```
 
 - **Login Page:**  
   The login page is served at `/` and provides a "Login with Keycloak" button, which redirects users to the Keycloak login screen.
 
 - **Customizing Authentication:**  
-  You can adjust authentication logic in `internal/server/middleware.go` and `internal/server/routes.go`.
+  You can adjust authentication logic in `internal/middleware/auth.go` and route configuration in `internal/server/routes.go`.
 
 For more details on configuring Keycloak, see the [Keycloak documentation](https://www.keycloak.org/documentation).
+
+## API Documentation (Swagger)
+
+The backend provides interactive API documentation using Swagger/OpenAPI.
+
+### Accessing Swagger UI
+
+1. Start the backend server:
+   ```bash
+   make run
+   ```
+
+2. Open your browser and navigate to:
+   ```
+   http://localhost:8080/swagger/index.html
+   ```
+
+### Using Swagger with Authentication
+
+Since the API uses Keycloak for authentication, you need a Bearer token to test protected endpoints in Swagger.
+
+**Steps to get a Bearer token:**
+
+1. **Enable Direct Access Grants in Keycloak:**
+   - Go to Keycloak Admin Console: https://localhost:8443
+   - Login with admin credentials
+   - Select **passit** realm
+   - Go to **Clients** → **passit-backend**
+   - In **Settings** tab, enable **"Direct access grants"**
+   - Disable **"Consent required"** if enabled
+   - Click **Save**
+
+2. **Get Access Token using PowerShell:**
+   ```powershell
+   $body = @{
+       client_id = "passit-backend"
+       client_secret = "79VK0WOudj"
+       grant_type = "password"
+       username = "admin@passit.com"
+       password = "YourSecurePassword123!"
+   }
+
+   $response = Invoke-RestMethod -Uri "https://localhost:8443/realms/passit/protocol/openid-connect/token" -Method Post -Body $body -ContentType "application/x-www-form-urlencoded" -SkipCertificateCheck
+   
+   # Copy the access token
+   $response.access_token
+   ```
+
+   Or using curl:
+   ```bash
+   curl -X POST "https://localhost:8443/realms/passit/protocol/openid-connect/token" \
+     -H "Content-Type: application/x-www-form-urlencoded" \
+     -d "client_id=passit-backend" \
+     -d "client_secret=79VK0WOudj" \
+     -d "grant_type=password" \
+     -d "username=admin@passit.com" \
+     -d "password=YourSecurePassword123!" \
+     --insecure
+   ```
+
+3. **Use Token in Swagger:**
+   - Click the **Authorize** button (green lock icon) in Swagger UI
+   - Paste the access token (without "Bearer" prefix)
+   - Click **Authorize**
+   - Click **Close**
+   - Now you can test all protected endpoints
+
+### Regenerating Swagger Documentation
+
+After adding new endpoints or updating annotations, regenerate the docs:
+
+```bash
+swag init -g cmd/api/main.go
+```
+
+This will update the `docs/` folder with the latest API specifications.
+

@@ -23,8 +23,12 @@ type Config struct {
 	RedisClient *redis.Options
 }
 type AppConfig struct {
-	Port int
-	Env  string
+	Port                   int
+	Env                    string
+	FrontendURL            string
+	BootstrapAdminUsername string
+	BootstrapAdminEmail    string
+	BootstrapAdminPassword string
 }
 
 func LoadFromEnv() (*Config, error) {
@@ -53,8 +57,12 @@ func LoadFromEnv() (*Config, error) {
 	}
 	return &Config{
 		App: &AppConfig{
-			Port: port,
-			Env:  requireEnv("ENV"),
+			Port:                   port,
+			Env:                    requireEnv("ENV"),
+			FrontendURL:            requireEnv("FRONTEND_URL"),
+			BootstrapAdminUsername: os.Getenv("BOOTSTRAP_ADMIN_USERNAME"), // Optional
+			BootstrapAdminEmail:    os.Getenv("BOOTSTRAP_ADMIN_EMAIL"),    // Optional
+			BootstrapAdminPassword: os.Getenv("BOOTSTRAP_ADMIN_PASSWORD"), // Optional
 		},
 		DB: &database.DBConfig{
 			Host:     requireEnv("DB_HOST"),
@@ -65,11 +73,14 @@ func LoadFromEnv() (*Config, error) {
 			Schema:   requireEnv("DB_SCHEMA"),
 		},
 		Auth: &auth.Config{
-			BaseURL:      requireEnv("KEYCLOAK_URL"),
-			ClientID:     requireEnv("KEYCLOAK_CLIENT_ID"),
-			Realm:        requireEnv("KEYCLOAK_REALM"),
-			ClientSecret: requireEnv("KEYCLOAK_CLIENT_SECRET"),
-			RedirectURL:  requireEnv("REDIRECT_URL"),
+			BaseURL:       requireEnv("KEYCLOAK_URL"),
+			ClientID:      requireEnv("KEYCLOAK_CLIENT_ID"),
+			Realm:         requireEnv("KEYCLOAK_REALM"),
+			ClientSecret:  requireEnv("KEYCLOAK_CLIENT_SECRET"),
+			RedirectURL:   requireEnv("REDIRECT_URL"),
+			AdminUsername: requireEnv("KEYCLOAK_ADMIN_USERNAME"),
+			AdminPassword: requireEnv("KEYCLOAK_ADMIN_PASSWORD"),
+			FrontendURL:   requireEnv("FRONTEND_URL"),
 		},
 		RedisClient: &redis.Options{
 			Addr:     fmt.Sprintf("%s:%s", requireEnv("REDIS_HOST"), requireEnv("REDIS_PORT")),

@@ -1,5 +1,6 @@
 <script setup lang="ts">
-window.location.href = 'http://localhost:8080/auth/logout';
+import { authApi } from '@/api/services';
+authApi.logout();
 </script>
 
 <template>

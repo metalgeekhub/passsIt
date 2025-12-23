@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import Hero from '@/components/Hero.vue';
 import HomeCards from '@/components/HomeCards.vue';
-import JobListing from '@/components/JobListing.vue';
 </script>
 
 <template>
-    <Hero title="Test Vue" subtitle="Test subtitle" />
+    <Hero 
+      title="PassIt - Your Event Ticketing Solution" 
+      subtitle="Create amazing events and sell tickets effortlessly" 
+    />
     <HomeCards />
-    <JobListing :limit="3" :showAll="true" />
 </template>

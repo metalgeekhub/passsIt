@@ -7,32 +7,35 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"os"
 	"passIt/internal/auth"
 	"passIt/internal/constant"
+	"passIt/internal/database"
+	"passIt/internal/models"
+	"passIt/internal/services"
 	"passIt/internal/store"
 	"passIt/internal/utils"
 	"time"
 
+	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/gin-gonic/gin"
 	"golang.org/x/oauth2"
 )
 
 type AuthHandler struct {
 	authClient   *auth.Client
-	authStore    store.AuthStore
 	sessionStore store.SessionStore
+	userService  services.UserService
+	frontendURL  string
 }
 
-func NewAuthHandler(authClient *auth.Client, authStore store.AuthStore, sessionStore store.SessionStore) *AuthHandler {
+func NewAuthHandler(authClient *auth.Client, sessionStore store.SessionStore, dbService database.Service, frontendURL string) *AuthHandler {
 	return &AuthHandler{
 		authClient:   authClient,
-		authStore:    authStore,
 		sessionStore: sessionStore,
+		userService:  services.NewUserService(dbService, authClient),
+		frontendURL:  frontendURL,
 	}
 }
-
-var frontendURL = os.Getenv("FRONTEND_URL")
 
 // generateRandomSecureString creates a random secure string
 func generateRandomSecureString() (string, error) {
@@ -52,22 +55,39 @@ func (h *AuthHandler) ShowLoginPage(c *gin.Context) {
 
 // LoginHandler initiates the OAuth2 authorization code flow with Keycloak.
 // It generates a secure state parameter to prevent CSRF attacks and stores it
-// in Redis for later verification during the callback phase.
+// in a secure cookie for later verification during the callback phase.
 //
 // Returns:
 // - 302: Redirects to Keycloak login page
-// - 500: Internal Server Error if state generation or storage fails
+// - 500: Internal Server Error if state generation fails
+// LoginHandler godoc
+// @Summary      Initiate OAuth2 login
+// @Description  Redirects to Keycloak for authentication
+// @Tags         auth
+// @Success      302 {string} string "Redirect to Keycloak"
+// @Failure      500 {object} map[string]string
+// @Router       /auth/login [get]
 func (a *AuthHandler) LoginHandler(c *gin.Context) {
 	state, err := generateRandomSecureString()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate state"})
 		return
 	}
-	// Store state in session for later verification
-	if err = a.authStore.SetState(c, state); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save session"})
-		return
-	}
+
+	// Store state in secure, signed cookie (simpler than Redis for state)
+	// Cookie expires in 5 minutes - enough time for OAuth flow
+	// Use SameSiteLaxMode for OAuth redirects (Strict blocks external redirects)
+	// Use secure=false for localhost development (no HTTPS)
+	c.SetSameSite(http.SameSiteLaxMode)
+	c.SetCookie(
+		"oauth_state",  // name
+		state,          // value
+		300,            // maxAge: 5 minutes
+		"/",            // path
+		"",             // domain
+		false,          // secure: false for localhost (set to true in production with HTTPS)
+		true,           // httpOnly
+	)
 
 	// Build authentication URL
 	authURL := a.authClient.Oauth.AuthCodeURL(
@@ -80,7 +100,12 @@ func (a *AuthHandler) LoginHandler(c *gin.Context) {
 	c.Redirect(http.StatusTemporaryRedirect, authURL)
 }
 
-// LogoutHandler logs the user out by deleting the session and clearing the cookie
+// LogoutHandler godoc
+// @Summary      Logout user
+// @Description  Logs the user out by deleting the session and clearing the cookie
+// @Tags         auth
+// @Success      302 {string} string "Redirect to Keycloak logout"
+// @Router       /auth/logout [get]
 func (a *AuthHandler) LogoutHandler(c *gin.Context) {
 	sessionID, err := c.Cookie("session_id")
 	log.Printf("Session_id=%s", sessionID)
@@ -103,7 +128,7 @@ func (a *AuthHandler) LogoutHandler(c *gin.Context) {
 		-1, // MaxAge negative deletes the cookie
 		"/",
 		"",
-		true, // secure
+		false, // secure: false for localhost
 		true, // httpOnly
 	)
 
@@ -112,7 +137,25 @@ func (a *AuthHandler) LogoutHandler(c *gin.Context) {
 	c.Redirect(http.StatusTemporaryRedirect, logoutURL)
 }
 
+// CallbackHandler godoc
+// @Summary      OAuth2 callback
+// @Description  Handles the OAuth2 callback from Keycloak after authentication
+// @Tags         auth
+// @Param        code query string true "Authorization code"
+// @Param        state query string true "State parameter"
+// @Success      302 {string} string "Redirect to frontend"
+// @Failure      500 {object} map[string]string
+// @Router       /auth/callback [get]
 func (a *AuthHandler) CallbackHandler(c *gin.Context) {
+	// Check for error parameter from OAuth provider (e.g., user denied access)
+		if errorParam := c.Query("error"); errorParam != "" {
+		errorDesc := c.Query("error_description")
+		log.Printf("OAuth error: %s - %s", errorParam, errorDesc)
+		// Redirect to frontend with error
+		c.Redirect(http.StatusTemporaryRedirect, fmt.Sprintf("%s/login?error=%s", a.frontendURL, errorParam))
+		return
+	}
+
 	if err := a.validateStateSession(c); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to validate state session"})
 		log.Printf("State validation error: %v", err)
@@ -130,6 +173,15 @@ func (a *AuthHandler) CallbackHandler(c *gin.Context) {
 		log.Printf("ID token validation error: %v", err)
 		return
 	}
+	
+	// Fetch user from database to get admin status
+	dbUser, err := a.userService.GetUserByEmail(c, userInfo.Email)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch user from database"})
+		log.Printf("Failed to fetch user: %v", err)
+		return
+	}
+	
 	sessionID, err := generateRandomSecureString()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate session ID"})
@@ -143,13 +195,14 @@ func (a *AuthHandler) CallbackHandler(c *gin.Context) {
 	// 	log.Printf("Failed to get token ID")
 	// 	return
 	// }
-	// Create session data
+	// Create session data with admin status
 	sessionData := store.SessionData{
 		AccessToken: oauthToken.AccessToken, // From Keycloak
 		IDToken:     tokenID,
 		UserInfo: store.UserInfo{
 			Username: userInfo.Username,
 			Email:    userInfo.Email,
+			IsAdmin:  dbUser.IsAdmin,
 		},
 		CreatedAt: time.Now(),
 	}
@@ -160,7 +213,7 @@ func (a *AuthHandler) CallbackHandler(c *gin.Context) {
 	}
 	// Set SameSite attribute
 	// Note: Gin handles SameSite through the Config struct
-	c.SetSameSite(http.SameSiteStrictMode)
+	c.SetSameSite(http.SameSiteLaxMode)
 	// Set secure session cookie using Gin's methods
 	c.SetCookie(
 		"session_id",                            // name
@@ -168,10 +221,10 @@ func (a *AuthHandler) CallbackHandler(c *gin.Context) {
 		int(constant.SessionDuration.Seconds()), // maxAge in seconds
 		"/",                                     // path
 		"",                                      // domain (empty means default to current domain)
-		true,                                    // secure (HTTPS only)
+		false,                                   // secure: false for localhost (set to true in production with HTTPS)
 		true,                                    // httpOnly (prevents JavaScript access)
 	)
-	c.Redirect(http.StatusTemporaryRedirect, frontendURL)
+	c.Redirect(http.StatusTemporaryRedirect, a.frontendURL)
 }
 
 func (a *AuthHandler) tokenExchange(c *gin.Context) (*oauth2.Token, error) {
@@ -206,8 +259,11 @@ func (a *AuthHandler) validateAndGetClaimsIDToken(c *gin.Context, oauth2Token *o
 	if !ok {
 		return nil, "", errors.New("no ID token found")
 	}
-	// Verify the ID token
-	idToken, err := a.authClient.OIDC.Verify(insecureCtx, rawIDToken)
+	// Verify the ID token using the OIDC provider's verifier
+	verifier := a.authClient.Provider.Verifier(&oidc.Config{
+		ClientID: a.authClient.Config.ClientID,
+	})
+	idToken, err := verifier.Verify(insecureCtx, rawIDToken)
 	if err != nil {
 		return nil, "", errors.New("failed to verify id token")
 	}
@@ -225,8 +281,8 @@ func (a *AuthHandler) validateStateSession(c *gin.Context) error {
 		return errors.New("missing state parameter in callback")
 	}
 
-	// Retrieve stored state from Redis
-	storedState, err := a.authStore.GetState(c, stateParam)
+	// Retrieve stored state from cookie
+	storedState, err := c.Cookie("oauth_state")
 	if err != nil {
 		return fmt.Errorf("failed to retrieve stored state: %w", err)
 	}
@@ -236,10 +292,70 @@ func (a *AuthHandler) validateStateSession(c *gin.Context) error {
 		return errors.New("state parameter mismatch")
 	}
 
-	// Clean up used state from store
-	if err = a.authStore.DeleteState(c, storedState); err != nil {
-		log.Printf("Warning: failed to delete used state: %v", err)
-	}
+	// Clean up used state cookie
+	c.SetCookie(
+		"oauth_state",
+		"",
+		-1, // Delete cookie
+		"/",
+		"",
+		false, // secure: false for localhost
+		true,
+	)
 
 	return nil
+}
+
+// SignupRequest represents the request body for public signup
+type SignupRequest struct {
+	Username  string `json:"username" binding:"required"`
+	Email     string `json:"email" binding:"required,email"`
+	Password  string `json:"password" binding:"required,min=8"`
+	FirstName string `json:"first_name"`
+	LastName  string `json:"last_name"`
+}
+
+// SignupHandler godoc
+// @Summary      Register new user
+// @Description  Allows public users to self-register (always as non-admin)
+// @Tags         auth
+// @Accept       json
+// @Produce      json
+// @Param        user body SignupRequest true "User signup data"
+// @Success      201 {object} map[string]interface{}
+// @Failure      400 {object} map[string]string
+// @Failure      500 {object} map[string]string
+// @Router       /auth/signup [post]
+func (a *AuthHandler) SignupHandler(c *gin.Context) {
+	var req SignupRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Create user data - always set IsAdmin to false for public signups
+	user := &models.User{
+		Username:  req.Username,
+		Email:     req.Email,
+		FirstName: req.FirstName,
+		LastName:  req.LastName,
+		IsAdmin:   false, // Public signups are never admin
+		IsActive:  true,
+	}
+
+	err := a.userService.CreateUser(c, user, req.Password)
+	if err != nil {
+		log.Printf("Failed to create user: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to create user: %v", err)})
+		return
+	}
+
+	c.JSON(http.StatusCreated, gin.H{
+		"message": "User created successfully. Please login.",
+		"user": gin.H{
+			"id":       user.ID,
+			"username": user.Username,
+			"email":    user.Email,
+		},
+	})
 }

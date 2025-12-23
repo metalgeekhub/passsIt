@@ -1,13 +1,14 @@
 import axios from 'axios';
+import config from '../config/env';
 
 const publicAxios = axios.create({
-  baseURL: 'http://localhost:8080', // your backend URL
+  baseURL: config.apiBaseUrl,
   withCredentials: false, 
 });
 
 const authAxios = axios.create({
-  baseURL: 'http://localhost:8080', // your backend URL
-  withCredentials: true,            // send cookies with requests
+  baseURL: config.apiBaseUrl,
+  withCredentials: true, // send cookies with requests
 });
 
 // Interceptor for handling 401 Unauthorized globally

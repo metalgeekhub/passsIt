@@ -5,7 +5,6 @@ import (
 	"crypto/tls"
 	"log"
 	"net/url"
-	"os"
 	"passIt/internal/models"
 	"passIt/internal/utils"
 
@@ -35,19 +34,24 @@ import (
 )
 
 type Config struct {
-	BaseURL      string // Authorization base url
-	ClientID     string // client id oauth
-	RedirectURL  string // valid redirect url
-	ClientSecret string // keycloak client secret
-	Realm        string // keycloak realm
+	BaseURL       string // Authorization base url
+	ClientID      string // client id oauth
+	RedirectURL   string // valid redirect url
+	ClientSecret  string // keycloak client secret
+	Realm         string // keycloak realm
+	AdminUsername string // keycloak admin username
+	AdminPassword string // keycloak admin password
+	FrontendURL   string // frontend URL for redirects
 }
 
 // Client struct holds all components needed for authentication
 type Client struct {
-	Client   *gocloak.GoCloak      // gocloak client for Keycloak admin operations
-	Provider *oidc.Provider        // Handles OIDC protocol operations with Keycloak
-	OIDC     *oidc.IDTokenVerifier // Verifies JWT tokens from Keycloak
-	Oauth    oauth2.Config         // Manages OAuth2 flow (authorization codes, tokens)
+	Client      *gocloak.GoCloak      // gocloak client for Keycloak admin operations
+	Provider    *oidc.Provider        // Handles OIDC protocol operations with Keycloak
+	Oauth       *oauth2.Config        // OAuth2 configuration for token exchange
+	Keycloak    KeycloakClient        // Keycloak admin client
+	FrontendURL string                // Frontend URL for redirects
+	Config      *Config               // Store config for admin operations
 }
 
 func New(ctx context.Context, config *Config) (*Client, error) {
@@ -69,11 +73,6 @@ func New(ctx context.Context, config *Config) (*Client, error) {
 		return nil, fmt.Errorf("failed to get provider: %v", err)
 	}
 
-	// Create ID token verifier
-	verifier := provider.Verifier(&oidc.Config{
-		ClientID: config.ClientID,
-	})
-
 	// Configure an OpenID Connect aware OAuth2 client with specific scopes:
 	// - oidc.ScopeOpenID: Required for OpenID Connect authentication, provides subject ID (sub)
 	// - "roles": Keycloak-specific scope to get user roles in the token
@@ -94,36 +93,25 @@ func New(ctx context.Context, config *Config) (*Client, error) {
 	client.SetRestyClient(restyClient)
 
 	// Return initialized client with all required components
-	return &Client{
-		Client: client,
-		// client: gocloak.NewClientWithCustomHTTPClient(config.BaseURL, insecureHttpClient),
-		// Note on field purposes:
-		// oauth2Config: Used for OAuth2 operations like:
-		// - Generating login URL (AuthCodeURL)
-		// - Exchanging auth code for tokens (Exchange)
-		// - Managing token refresh
-		Oauth: oauth2Config,
-
-		// verifier: Used to validate tokens:
-		// - Verifies JWT signature
-		// - Validates token claims (exp, iss, aud)
-		// - Extracts user information
-		OIDC: verifier,
-
-		// provider: Keycloak OIDC provider that:
-		// - Provides endpoint URLs (auth, token)
-		// - Handles OIDC protocol details
-		// - Manages provider metadata
+	// Note: The returned Client implements KeycloakClient interface
+	authClient := &Client{
+		Client:   client,
+		Config:   config,
+		Oauth:    &oauth2Config,
 		Provider: provider,
-	}, nil
+		FrontendURL: config.FrontendURL,
+	}
+	
+	// Set Keycloak field to point to itself (implements KeycloakClient)
+	authClient.Keycloak = authClient
+	
+	return authClient, nil
 }
 
 func (c *Client) GetLogOutURL(tokenHint string) string {
 	authEndpoint := c.Oauth.Endpoint.AuthURL[:len(c.Oauth.Endpoint.AuthURL)-len("/auth")]
-	frontendURL := os.Getenv("FRONTEND_URL")
-	// realm := os.Getenv("KEYCLOAK_REALM")
 	log.Println(tokenHint)
-	return fmt.Sprintf("%s/logout?id_token_hint=%s&post_logout_redirect_uri=%s", authEndpoint, tokenHint, url.QueryEscape(frontendURL))
+	return fmt.Sprintf("%s/logout?id_token_hint=%s&post_logout_redirect_uri=%s", authEndpoint, tokenHint, url.QueryEscape(c.FrontendURL))
 }
 
 // AuthCodeURL generates the login URL for OAuth2 authorization code flow.
@@ -135,13 +123,13 @@ func (c *Client) AuthCodeURL(state string) string {
 }
 
 func (c *Client) CreateKeycloakUser(ctx context.Context, user *models.User, password string) (string, error) {
-	realm := os.Getenv("KEYCLOAK_REALM")
+	realm := c.Config.Realm
 
 	// Admin login to Keycloak
 	token, err := c.Client.LoginAdmin(
 		ctx,
-		os.Getenv("KEYCLOAK_ADMIN_USERNAME"),
-		os.Getenv("KEYCLOAK_ADMIN_PASSWORD"),
+		c.Config.AdminUsername,
+		c.Config.AdminPassword,
 		realm,
 	)
 	if err != nil {
@@ -178,13 +166,13 @@ func (c *Client) CreateKeycloakUser(ctx context.Context, user *models.User, pass
 }
 
 func (c *Client) UpdateKeycloakUser(ctx context.Context, user *models.User) error {
-	realm := os.Getenv("KEYCLOAK_REALM")
+	realm := c.Config.Realm
 
 	// Admin login to Keycloak
 	token, err := c.Client.LoginAdmin(
 		ctx,
-		os.Getenv("KEYCLOAK_ADMIN_USERNAME"),
-		os.Getenv("KEYCLOAK_ADMIN_PASSWORD"),
+		c.Config.AdminUsername,
+		c.Config.AdminPassword,
 		realm,
 	)
 	if err != nil {
@@ -204,5 +192,52 @@ func (c *Client) UpdateKeycloakUser(ctx context.Context, user *models.User) erro
 	if err != nil {
 		return fmt.Errorf("failed to update user in keycloak: %w", err)
 	}
+	return nil
+}
+
+func (c *Client) DeleteKeycloakUser(ctx context.Context, userID string) error {
+	realm := c.Config.Realm
+
+	// Admin login to Keycloak
+	token, err := c.Client.LoginAdmin(
+		ctx,
+		c.Config.AdminUsername,
+		c.Config.AdminPassword,
+		realm,
+	)
+	if err != nil {
+		return fmt.Errorf("keycloak admin login failed: %w", err)
+	}
+
+	// Delete user from Keycloak
+	err = c.Client.DeleteUser(ctx, token.AccessToken, realm, userID)
+	if err != nil {
+		return fmt.Errorf("failed to delete user from keycloak: %w", err)
+	}
+
+	return nil
+}
+
+// UpdatePassword updates a user's password in Keycloak
+func (c *Client) UpdatePassword(ctx context.Context, keycloakUserID string, newPassword string) error {
+	realm := c.Config.Realm
+
+	// Admin login to Keycloak
+	token, err := c.Client.LoginAdmin(
+		ctx,
+		c.Config.AdminUsername,
+		c.Config.AdminPassword,
+		realm,
+	)
+	if err != nil {
+		return fmt.Errorf("keycloak admin login failed: %w", err)
+	}
+
+	// Set new password for the user
+	err = c.Client.SetPassword(ctx, token.AccessToken, keycloakUserID, realm, newPassword, false)
+	if err != nil {
+		return fmt.Errorf("failed to update password in keycloak: %w", err)
+	}
+
 	return nil
 }

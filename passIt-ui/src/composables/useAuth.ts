@@ -1,13 +1,21 @@
 import { ref } from 'vue'
-import authAxios from '../api/axios';
+import { authApi } from '@/api/services';
 
 export const isAuthenticated = ref(false)
+export const isAdmin = ref(false)
+export const currentUser = ref<any>(null)
 
 export async function checkAuth() {
   try {
-    await authAxios.get('/users')
-    isAuthenticated.value = true
+    const user = await authApi.getCurrentUser();
+    isAuthenticated.value = true;
+    isAdmin.value = user.is_admin || false;
+    currentUser.value = user;
+    return true;
   } catch {
-    isAuthenticated.value = false
+    isAuthenticated.value = false;
+    isAdmin.value = false;
+    currentUser.value = null;
+    return false;
   }
 }

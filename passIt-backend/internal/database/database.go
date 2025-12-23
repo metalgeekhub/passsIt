@@ -98,8 +98,15 @@ func (s *service) GetGormDB() *gorm.DB {
 }
 
 func (s *service) Migration() {
+	// Enable uuid-ossp extension for UUID generation
+	err := s.gormDB.Exec("CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\"").Error
+	if err != nil {
+		log.Fatalf("Failed to enable uuid-ossp extension: %v", err)
+	}
+	log.Println("uuid-ossp extension enabled successfully.")
+
 	// Migrate the schema, creating tables, constraints, etc.
-	err := s.gormDB.AutoMigrate(&models.User{})
+	err = s.gormDB.AutoMigrate(&models.User{})
 	if err != nil {
 		log.Fatalf("Failed to migrate database schema: %v", err)
 	}
