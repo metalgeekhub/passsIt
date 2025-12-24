@@ -1,0 +1,95 @@
+services:
+  psql_bp:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_DATABASE}
+      POSTGRES_USER: ${DB_USERNAME}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    ports:
+      - "${DB_PORT}:5432"
+    volumes:
+      - psql_volume_bp:/var/lib/postgresql/data
+  keyclock:
+    build:
+      context: ./setup/docker/keycloack
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - psql_bp
+      - db-init-keycloack
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://psql_bp:5432/keycloack
+      KC_DB_USERNAME: ${DB_USERNAME}
+      KC_DB_PASSWORD: ${DB_PASSWORD}
+    ports:
+      - "8443:8443"
+      - "9000:9000"
+    command:
+      - start
+      - --optimized
+      - --hostname=localhost
+      - --import-realm
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/9000 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 90s
+  redis:
+    image: redis:7
+    restart: unless-stopped
+    ports:
+      - "65000:6379"
+    command: ["redis-server", "--requirepass", "redis_password"]
+  passit-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    environment:
+      # Keep localhost for browser redirects
+      KEYCLOAK_URL: https://localhost:8443
+      DB_HOST: psql_bp
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    extra_hosts:
+      # Map localhost to host machine so container can access it
+      - "localhost:host-gateway"
+    ports:
+      - "8080:8080"
+    depends_on:
+      keyclock:
+        condition: service_healthy
+      psql_bp:
+        condition: service_started
+      redis:
+        condition: service_started
+    restart: on-failure
+  passit-ui:
+    build:
+      context: ../passIt-ui
+      dockerfile: Dockerfile
+    ports:
+      - "3000:80"
+    depends_on:
+      - passit-api
+  db-init-keycloack:
+    image: postgres:17
+    depends_on:
+      - psql_bp
+    environment:
+      PGPASSWORD: ${DB_PASSWORD}
+    entrypoint: >
+      bash -c "
+        until pg_isready -h psql_bp -U ${DB_USERNAME}; do sleep 2; done;
+        psql -h psql_bp -U ${DB_USERNAME} -d postgres -c 'CREATE DATABASE keycloack;' || true
+      "
+
+
+volumes:
+  psql_volume_bp:

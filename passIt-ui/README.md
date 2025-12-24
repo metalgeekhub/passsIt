@@ -100,6 +100,20 @@ npm run build
 npm run test:unit
 ```
 
+## Docker
+
+### Development
+```sh
+docker build -f Dockerfile_development -t passit-ui:dev .
+docker run -p 3000:3000 -v $(pwd):/app passit-ui:dev
+```
+
+### Production
+```sh
+docker build -t passit-ui:latest .
+docker run -p 80:80 passit-ui:latest
+```
+
 ## Backend Integration
 
 This frontend connects to the PassIt backend API. Make sure:

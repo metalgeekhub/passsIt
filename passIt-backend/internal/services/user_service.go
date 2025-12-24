@@ -17,6 +17,7 @@ type UserService interface {
 	GetUserByID(ctx context.Context, id uuid.UUID) (models.User, error)
 	GetUserByEmail(ctx context.Context, email string) (models.User, error)
 	GetAllUsers(ctx context.Context) ([]models.User, error)
+	GetInactiveUsers(ctx context.Context) ([]models.User, error)
 	UpdateUser(ctx context.Context, user *models.User) error
 	DeleteUser(ctx context.Context, id uuid.UUID) error
 }
@@ -80,6 +81,15 @@ func (s *userService) GetAllUsers(ctx context.Context) ([]models.User, error) {
 	users, err := s.db.GetAllUsers()
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve users: %w", err)
+	}
+	return users, nil
+}
+
+// GetInactiveUsers retrieves all inactive users from the database
+func (s *userService) GetInactiveUsers(ctx context.Context) ([]models.User, error) {
+	users, err := s.db.GetInactiveUsers()
+	if err != nil {
+		return nil, fmt.Errorf("failed to retrieve inactive users: %w", err)
 	}
 	return users, nil
 }

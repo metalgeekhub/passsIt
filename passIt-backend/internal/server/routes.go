@@ -21,7 +21,11 @@ import (
 )
 
 func (s *Server) RegisterRoutes(ctx context.Context, cfg *config.Config, authClient *auth.Client, redisClient *redis.Client) http.Handler {
-	// gin.SetMode(gin.ReleaseMode) // Set Gin to release mode
+	// Set Gin to release mode in production
+	if cfg.App.ENV == "production" {
+		gin.SetMode(gin.ReleaseMode)
+	}
+	
 	r := gin.Default()
 	r.LoadHTMLGlob("./internal/templates/*.*")
 
@@ -43,8 +47,10 @@ func (s *Server) RegisterRoutes(ctx context.Context, cfg *config.Config, authCli
 	r.GET("/", authHandler.ShowLoginPage)
 	r.GET("/health", s.healthHandler)
 	
-	// Swagger documentation
-	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+	// Swagger documentation - only in development
+	if cfg.App.ENV == "development" {
+		r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+	}
 
 	// Browser OAuth flow routes (for web frontend)
 	auth := r.Group("/auth")
@@ -69,8 +75,10 @@ func (s *Server) RegisterRoutes(ctx context.Context, cfg *config.Config, authCli
 		adminAPI.Use(authMiddleware.RequireAdmin()) // Admin-only middleware
 		{
 			adminAPI.GET("/users", s.GetAllUsersHandler)
+			adminAPI.GET("/users/inactive", s.GetInactiveUsersHandler)
 			adminAPI.POST("/users", s.CreateUserHandler)
 			adminAPI.PUT("/users/:id", s.UpdateUserByIdHandler)
+			adminAPI.DELETE("/users/:id", s.DeleteUserByIdHandler)
 		}
 	}
 
@@ -80,3 +88,9 @@ func (s *Server) RegisterRoutes(ctx context.Context, cfg *config.Config, authCli
 func (s *Server) healthHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, s.db.Health())
 }
+
+// DONE: Delete user handler - toggles isActive to false and disables in Keycloak with rollback
+// DONE: UpdatedAt field - GORM handles automatically with time.Time field
+// DONE: UpdateUserByIdHandler refactored - extracted applyUserUpdates helper function
+// DONE: Keycloak sync - UpdateKeycloakUser syncs username, firstname, lastname, email
+// TODO: Implement proper transactional rollback if DB update fails after Keycloak update

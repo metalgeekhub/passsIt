@@ -46,7 +46,8 @@ func (s *service) UpdateUserById(user *models.User) error {
 	// 	log.Println("Error finding user by ID:", result.Error)
 	// 	return result.Error
 	// }
-	result := s.GetGormDB().Where("id = ?", user.ID).Updates(user)
+	// Use Select("*") to update all fields including zero values (false booleans)
+	result := s.GetGormDB().Where("id = ?", user.ID).Select("*").Updates(user)
 	if result.Error != nil {
 		log.Println("Error Updating user by ID:", result.Error)
 		return result.Error
@@ -56,9 +57,22 @@ func (s *service) UpdateUserById(user *models.User) error {
 
 func (s *service) GetAllUsers() ([]models.User, error) {
 	var users []models.User
-	result := s.GetGormDB().Find(&users)
+	// Only return active users by default
+	result := s.GetGormDB().Where("is_active = ?", true).Find(&users)
 	if result.Error != nil {
 		log.Println("Error scanning user:", result.Error)
+		return nil, result.Error
+	}
+
+	return users, nil
+}
+
+func (s *service) GetInactiveUsers() ([]models.User, error) {
+	var users []models.User
+	// Only return inactive users
+	result := s.GetGormDB().Where("is_active = ?", false).Find(&users)
+	if result.Error != nil {
+		log.Println("Error scanning inactive users:", result.Error)
 		return nil, result.Error
 	}
 

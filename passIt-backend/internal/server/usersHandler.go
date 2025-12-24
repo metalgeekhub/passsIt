@@ -176,34 +176,20 @@ func (s *Server) UpdateUserByIdHandler(c *gin.Context) {
 		return
 	}
 
-	// Update only provided fields
-	if updateReq.Email != "" {
-		existingUser.Email = updateReq.Email
-	}
-	if updateReq.Username != "" {
-		existingUser.Username = updateReq.Username
-	}
-	if updateReq.FirstName != "" {
-		existingUser.FirstName = updateReq.FirstName
-	}
-	if updateReq.LastName != "" {
-		existingUser.LastName = updateReq.LastName
-	}
-	if updateReq.IsAdmin != nil {
-		existingUser.IsAdmin = *updateReq.IsAdmin
-	}
+	// Apply updates using a helper function
+	applyUserUpdates(&existingUser, &updateReq)
 
 	log.Printf("Received user update request for ID %s: %+v\n", id, existingUser)
 
-	// Use service layer - handles DB update and Keycloak sync
-	err = s.userService.UpdateUser(c, &existingUser)
+	// Update in Keycloak first
+	err = s.Keycloak.UpdateKeycloakUser(c, &existingUser)
 	if err != nil {
-		log.Printf("Failed to update user: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update user"})
+		log.Printf("Failed to update user in Keycloak: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update user in Keycloak"})
 		return
 	}
 
-	// Update password if provided
+	// Update password in Keycloak if provided
 	if updateReq.Password != "" {
 		err = s.Keycloak.UpdatePassword(c, existingUser.KeycloackID, updateReq.Password)
 		if err != nil {
@@ -213,7 +199,104 @@ func (s *Server) UpdateUserByIdHandler(c *gin.Context) {
 		}
 	}
 
+	// Update in database last
+	err = s.userService.UpdateUser(c, &existingUser)
+	if err != nil {
+		log.Printf("Failed to update user in database: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update user"})
+		// TODO: Implement proper rollback of Keycloak changes
+		return
+	}
+
 	c.JSON(http.StatusOK, existingUser)
+}
+
+// applyUserUpdates applies non-empty fields from update request to existing user
+func applyUserUpdates(user *models.User, update *UpdateUserRequestBody) {
+	if update.Email != "" {
+		user.Email = update.Email
+	}
+	if update.Username != "" {
+		user.Username = update.Username
+	}
+	if update.FirstName != "" {
+		user.FirstName = update.FirstName
+	}
+	if update.LastName != "" {
+		user.LastName = update.LastName
+	}
+	if update.IsAdmin != nil {
+		user.IsAdmin = *update.IsAdmin
+	}
+}
+
+// DeleteUserByIdHandler godoc
+// @Summary      Soft delete user by ID (Admin only)
+// @Description  Deactivate a user by setting isActive to false and disabling in Keycloak
+// @Tags         users
+// @Produce      json
+// @Param        id path string true "User ID"
+// @Success      200 {object} PassItResponseBody
+// @Failure      400 {object} map[string]string
+// @Failure      404 {object} map[string]string
+// @Failure      500 {object} map[string]string
+// @Security     BearerAuth
+// @Router       /api/users/{id} [delete]
+func (s *Server) DeleteUserByIdHandler(c *gin.Context) {
+	// Get ID from URL parameter
+	idStr := c.Param("id")
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid UUID format"})
+		return
+	}
+
+	// Get existing user
+	existingUser, err := s.userService.GetUserByID(c, id)
+	if err != nil {
+		log.Printf("User not found: %v", err)
+		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+		return
+	}
+
+	// Check if user is already inactive
+	if !existingUser.IsActive {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "User is already inactive"})
+		return
+	}
+
+	// Deactivate user (soft delete)
+	existingUser.IsActive = false
+
+	// Update in database
+	err = s.userService.UpdateUser(c, &existingUser)
+	if err != nil {
+		log.Printf("Failed to deactivate user in database: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to deactivate user"})
+		return
+	}
+
+	// Update Keycloak to disable the user
+	err = s.Keycloak.UpdateKeycloakUser(c, &existingUser)
+	if err != nil {
+		// Rollback: reactivate user in database
+		existingUser.IsActive = true
+		rollbackErr := s.userService.UpdateUser(c, &existingUser)
+		if rollbackErr != nil {
+			log.Printf("CRITICAL: Failed to rollback user activation after Keycloak error: %v", rollbackErr)
+		}
+		log.Printf("Failed to disable user in Keycloak: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to disable user in Keycloak"})
+		return
+	}
+
+	c.JSON(http.StatusOK, PassItResponseBody{
+		Code: codes.UserDeletedSuccessfully,
+		Data: gin.H{
+			"message": "User deactivated successfully",
+			"user_id": existingUser.ID,
+		},
+	})
 }
 
 // GetAllUsersHandler godoc
@@ -230,6 +313,28 @@ func (s *Server) GetAllUsersHandler(c *gin.Context) {
 	if err != nil {
 		log.Println(err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve users"})
+		return
+	}
+
+	defer c.Request.Body.Close()
+
+	c.JSON(http.StatusOK, users)
+}
+
+// GetInactiveUsersHandler godoc
+// @Summary      Get all inactive users (Admin only)
+// @Description  Retrieve a list of all deactivated/deleted users in the system
+// @Tags         users
+// @Produce      json
+// @Success      200 {array} models.User
+// @Failure      500 {object} map[string]string
+// @Security     BearerAuth
+// @Router       /api/users/inactive [get]
+func (s *Server) GetInactiveUsersHandler(c *gin.Context) {
+	users, err := s.userService.GetInactiveUsers(c)
+	if err != nil {
+		log.Println(err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve inactive users"})
 		return
 	}
 

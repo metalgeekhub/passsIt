@@ -1,0 +1,31 @@
+# Ignore node_modules in Docker context
+node_modules
+npm-debug.log
+.npm
+
+# Ignore git
+.git
+.gitignore
+
+# Ignore IDE files
+.vscode
+.idea
+*.swp
+*.swo
+
+# Ignore env files (should be passed as build args or runtime env)
+.env.local
+.env.*.local
+
+# Ignore test files
+**/*.test.ts
+**/*.spec.ts
+coverage
+
+# Ignore build output (will be created in container)
+dist
+dist-ssr
+
+# Ignore misc
+README.md
+.DS_Store

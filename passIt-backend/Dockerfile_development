@@ -14,14 +14,13 @@ COPY . .
 
 # Build the Go app
 ENV CGO_ENABLED=0 GOOS=linux GOARCH=amd64
-RUN go build -ldflags="-s -w" -o main ./cmd/api/main.go
+RUN go build -ldflags="-extldflags=-static" -o main ./cmd/api/main.go 
 
 # -------- Stage 2: Run --------
 FROM gcr.io/distroless/static:nonroot
 
 WORKDIR /app
 COPY --from=builder /app/main .
-COPY --from=builder /app/internal/templates ./internal/templates
 
 # Run the binary
 CMD ["./main"]

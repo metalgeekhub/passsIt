@@ -24,7 +24,7 @@ type Config struct {
 }
 type AppConfig struct {
 	Port                   int
-	Env                    string
+	ENV                    string
 	FrontendURL            string
 	BootstrapAdminUsername string
 	BootstrapAdminEmail    string
@@ -38,12 +38,13 @@ func LoadFromEnv() (*Config, error) {
 		return nil, err
 	}
 
-	// Construct path to .env file in ../cmd/.env
+	// Construct path to .env file
 	envPath := filepath.Join(currentDir, ".env")
 	err = godotenv.Load(envPath)
 
+	// In Docker/production, .env file may not exist - that's ok, use environment variables directly
 	if err != nil {
-		log.Fatal("Error loading .env file", err)
+		log.Println("Warning: .env file not found, using environment variables directly")
 	}
 
 	redisDB, err := strconv.Atoi(requireEnv("REDIS_DATABASE"))
@@ -58,7 +59,7 @@ func LoadFromEnv() (*Config, error) {
 	return &Config{
 		App: &AppConfig{
 			Port:                   port,
-			Env:                    requireEnv("ENV"),
+			ENV:                    requireEnv("ENV"),
 			FrontendURL:            requireEnv("FRONTEND_URL"),
 			BootstrapAdminUsername: os.Getenv("BOOTSTRAP_ADMIN_USERNAME"), // Optional
 			BootstrapAdminEmail:    os.Getenv("BOOTSTRAP_ADMIN_EMAIL"),    // Optional

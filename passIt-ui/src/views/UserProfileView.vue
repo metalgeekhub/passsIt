@@ -1,14 +1,16 @@
 <script setup lang="ts">
 import { reactive, onMounted, computed } from 'vue';
-import { useRouter } from 'vue-router';
-import { authApi, userApi } from '@/api/services';
+import { useRouter, useRoute } from 'vue-router';
+import { userApi } from '@/api/services';
 import { useToast } from 'vue-toastification';
-import { currentUser } from '@/composables/useAuth';
+import { isAdmin } from '@/composables/useAuth';
 import PulseLoader from 'vue-spinner/src/PulseLoader.vue';
 import type { User } from '@/models/User';
 
 const router = useRouter();
+const route = useRoute();
 const toast = useToast();
+const userId = route.params.id as string;
 
 const state = reactive({
   user: null as User | null,
@@ -26,14 +28,13 @@ const form = reactive({
   dob: '',
   phoneNumber: '',
   address: '',
-  password: '',
-  confirmPassword: '',
+  isAdmin: false,
 });
 
 const loadUser = async () => {
   try {
     state.isLoading = true;
-    state.user = await authApi.getCurrentUser();
+    state.user = await userApi.getById(userId);
     
     // Populate form with user data
     form.email = state.user.email;
@@ -41,11 +42,13 @@ const loadUser = async () => {
     form.firstName = state.user.first_name;
     form.lastName = state.user.last_name;
     form.dob = state.user.dob ? state.user.dob.split('T')[0] : '';
-    form.phoneNumber = state.user.phone_number || '';
-    form.address = state.user.address || '';
+    form.phoneNumber = state.user.phone_number;
+    form.address = state.user.address;
+    form.isAdmin = state.user.is_admin;
   } catch (error: any) {
     console.error('Error fetching user:', error);
-    toast.error('Failed to load profile');
+    toast.error('Failed to load user');
+    router.push('/users');
   } finally {
     state.isLoading = false;
   }
@@ -60,10 +63,9 @@ const toggleEdit = () => {
       form.firstName = state.user.first_name;
       form.lastName = state.user.last_name;
       form.dob = state.user.dob ? state.user.dob.split('T')[0] : '';
-      form.phoneNumber = state.user.phone_number || '';
-      form.address = state.user.address || '';
-      form.password = '';
-      form.confirmPassword = '';
+      form.phoneNumber = state.user.phone_number;
+      form.address = state.user.address;
+      form.isAdmin = state.user.is_admin;
     }
     state.errors = {};
   }
@@ -82,15 +84,6 @@ const validateForm = () => {
   if (!form.firstName) state.errors.firstName = 'First name is required';
   if (!form.lastName) state.errors.lastName = 'Last name is required';
   
-  // Password is optional, but if provided, validate it
-  if (form.password) {
-    if (form.password.length < 8) {
-      state.errors.password = 'Password must be at least 8 characters';
-    } else if (form.password !== form.confirmPassword) {
-      state.errors.confirmPassword = 'Passwords do not match';
-    }
-  }
-  
   return Object.keys(state.errors).length === 0;
 };
 
@@ -100,15 +93,10 @@ const handleSave = async () => {
     return;
   }
   
-  if (!currentUser.value?.id) {
-    toast.error('User ID not found');
-    return;
-  }
-  
   state.isSaving = true;
   
   try {
-    const updateData: any = {
+    await userApi.update(userId, {
       email: form.email,
       username: form.username,
       firstName: form.firstName,
@@ -116,26 +104,15 @@ const handleSave = async () => {
       dob: form.dob,
       phoneNumber: form.phoneNumber,
       address: form.address,
-    };
-
-    // Only include password if it was changed
-    if (form.password) {
-      updateData.password = form.password;
-    }
-
-    await userApi.update(currentUser.value.id, updateData);
+      isAdmin: form.isAdmin,
+    });
     
-    toast.success('Profile updated successfully!');
+    toast.success('User updated successfully!');
     state.isEditing = false;
-    
-    // Clear password fields
-    form.password = '';
-    form.confirmPassword = '';
-    
     await loadUser(); // Reload user data
   } catch (error: any) {
-    console.error('Error updating profile:', error);
-    const errorMessage = error.response?.data?.error || 'Failed to update profile';
+    console.error('Error updating user:', error);
+    const errorMessage = error.response?.data?.error || 'Failed to update user';
     toast.error(errorMessage);
   } finally {
     state.isSaving = false;
@@ -173,7 +150,7 @@ onMounted(async () => {
       <!-- Loading State -->
       <div v-if="state.isLoading" class="text-center py-20">
         <PulseLoader color="#2563eb" />
-        <p class="mt-4 text-gray-600">Loading your profile...</p>
+        <p class="mt-4 text-gray-600">Loading user profile...</p>
       </div>
 
       <!-- User Profile -->
@@ -184,15 +161,25 @@ onMounted(async () => {
             <div>
               <h1 class="text-3xl font-bold">{{ state.user.username }}</h1>
               <p class="text-blue-200 mt-1">{{ state.user.email }}</p>
-              <div v-if="state.user.is_admin" class="mt-3">
-                <span class="px-3 py-1 text-xs font-semibold rounded-full bg-purple-500">
+              <div class="mt-3 flex items-center gap-3">
+                <span v-if="state.user.is_admin" class="px-3 py-1 text-xs font-semibold rounded-full bg-purple-500">
                   <i class="fa fa-shield"></i> Administrator
+                </span>
+                <span :class="state.user.is_active ? 'bg-green-500' : 'bg-red-500'" class="px-3 py-1 text-xs font-semibold rounded-full">
+                  <i class="fa" :class="state.user.is_active ? 'fa-check-circle' : 'fa-times-circle'"></i>
+                  {{ state.user.is_active ? 'Active' : 'Inactive' }}
                 </span>
               </div>
             </div>
-            <div>
+            <div class="flex gap-2">
               <button
-                v-if="!state.isEditing"
+                @click="router.push('/users')"
+                class="bg-blue-800 hover:bg-blue-900 text-white px-4 py-2 rounded-lg transition"
+              >
+                <i class="fa fa-arrow-left mr-2"></i>Back to Users
+              </button>
+              <button
+                v-if="isAdmin && !state.isEditing"
                 @click="toggleEdit"
                 class="bg-white text-blue-700 hover:bg-blue-50 px-4 py-2 rounded-lg transition font-semibold"
               >
@@ -251,12 +238,22 @@ onMounted(async () => {
             <!-- System Information -->
             <div class="col-span-2 mt-6">
               <h3 class="text-xl font-bold text-gray-800 mb-4 border-b pb-2">
-                <i class="fa fa-info-circle mr-2 text-blue-600"></i>Account Information
+                <i class="fa fa-info-circle mr-2 text-blue-600"></i>System Information
               </h3>
             </div>
 
             <div class="space-y-1">
-              <label class="text-sm font-semibold text-gray-600">Account Created</label>
+              <label class="text-sm font-semibold text-gray-600">User ID</label>
+              <p class="text-gray-900 text-sm font-mono">{{ state.user.id }}</p>
+            </div>
+
+            <div class="space-y-1">
+              <label class="text-sm font-semibold text-gray-600">Keycloak ID</label>
+              <p class="text-gray-900 text-sm font-mono">{{ state.user.keycloack_id }}</p>
+            </div>
+
+            <div class="space-y-1">
+              <label class="text-sm font-semibold text-gray-600">Created At</label>
               <p class="text-gray-900">{{ formatDateTime(state.user.created_at) }}</p>
             </div>
 
@@ -379,46 +376,19 @@ onMounted(async () => {
                     placeholder="123 Main St, City, State, ZIP"
                   ></textarea>
                 </div>
-              </div>
-            </div>
 
-            <!-- Change Password Section -->
-            <div class="pt-4 border-t">
-              <h3 class="text-xl font-bold text-gray-800 mb-4">
-                <i class="fa fa-lock mr-2 text-blue-600"></i>Change Password (Optional)
-              </h3>
-
-              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <!-- New Password -->
-                <div>
-                  <label for="password" class="block text-gray-700 font-bold mb-2">
-                    New Password
+                <!-- Admin Checkbox -->
+                <div class="md:col-span-2">
+                  <label class="flex items-center cursor-pointer">
+                    <input
+                      v-model="form.isAdmin"
+                      type="checkbox"
+                      id="isAdmin"
+                      class="w-5 h-5 text-blue-600 border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+                    />
+                    <span class="ml-3 text-gray-700 font-bold">Administrator privileges</span>
                   </label>
-                  <input
-                    v-model="form.password"
-                    type="password"
-                    id="password"
-                    class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    :class="{ 'border-red-500': state.errors.password }"
-                    placeholder="Leave blank to keep current"
-                  />
-                  <p v-if="state.errors.password" class="text-red-500 text-sm mt-1">{{ state.errors.password }}</p>
-                </div>
-
-                <!-- Confirm Password -->
-                <div>
-                  <label for="confirmPassword" class="block text-gray-700 font-bold mb-2">
-                    Confirm New Password
-                  </label>
-                  <input
-                    v-model="form.confirmPassword"
-                    type="password"
-                    id="confirmPassword"
-                    class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    :class="{ 'border-red-500': state.errors.confirmPassword }"
-                    placeholder="Confirm password"
-                  />
-                  <p v-if="state.errors.confirmPassword" class="text-red-500 text-sm mt-1">{{ state.errors.confirmPassword }}</p>
+                  <p class="text-gray-600 text-sm mt-1 ml-8">Administrators have full access to all features</p>
                 </div>
               </div>
             </div>

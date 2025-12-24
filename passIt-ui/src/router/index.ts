@@ -7,8 +7,10 @@ import LogoutView from '@/views/LogoutView.vue';
 import SignupView from '@/views/SignupView.vue';
 import ProfileView from '@/views/ProfileView.vue';
 import UsersView from '@/views/UsersView.vue';
+import DeletedUsersView from '@/views/DeletedUsersView.vue';
 import AddUserView from '@/views/AddUserView.vue';
 import EditUserView from '@/views/EditUserView.vue';
+import UserProfileView from '@/views/UserProfileView.vue';
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -54,9 +56,21 @@ const router = createRouter({
       meta: { public: false, requiresAdmin: true }
     },
     {
+      path: '/users/deleted',
+      name: 'deleted-users',
+      component: DeletedUsersView,
+      meta: { public: false, requiresAdmin: true }
+    },
+    {
       path: '/users/add',
       name: 'add-user',
       component: AddUserView,
+      meta: { public: false, requiresAdmin: true }
+    },
+    {
+      path: '/users/:id',
+      name: 'user-profile',
+      component: UserProfileView,
       meta: { public: false, requiresAdmin: true }
     },
     {

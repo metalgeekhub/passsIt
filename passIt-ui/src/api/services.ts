@@ -62,6 +62,9 @@ export const userApi = {
     username?: string;
     firstName?: string;
     lastName?: string;
+    dob?: string;
+    phoneNumber?: string;
+    address?: string;
     isAdmin?: boolean;
     password?: string;
   }): Promise<User> {
@@ -71,10 +74,28 @@ export const userApi = {
     if (userData.username) requestData.username = userData.username;
     if (userData.firstName) requestData.first_name = userData.firstName;
     if (userData.lastName) requestData.last_name = userData.lastName;
+    if (userData.dob) requestData.dob = userData.dob;
+    if (userData.phoneNumber) requestData.phone_number = userData.phoneNumber;
+    if (userData.address) requestData.address = userData.address;
     if (userData.isAdmin !== undefined) requestData.is_admin = userData.isAdmin;
     if (userData.password) requestData.password = userData.password;
     
     const response = await authAxios.put<User>(`/api/users/${id}`, requestData);
+    return response.data;
+  },
+
+  /**
+   * Delete user by ID - soft delete (requires admin authentication)
+   */
+  async delete(id: string): Promise<void> {
+    await authAxios.delete(`/api/users/${id}`);
+  },
+
+  /**
+   * Get all inactive/deleted users (requires admin authentication)
+   */
+  async getInactive(): Promise<User[]> {
+    const response = await authAxios.get<User[]>('/api/users/inactive');
     return response.data;
   },
 };

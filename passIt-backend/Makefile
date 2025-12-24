@@ -5,9 +5,13 @@ all: build test
 
 build:
 	@echo "Building..."
-	
-	
 	@go build -o main.exe cmd/api/main.go
+
+# Build for production (optimized)
+build-prod:
+	@echo "Building for production..."
+	@go build -ldflags="-s -w" -o passit-server.exe cmd/api/main.go
+	@echo "Production build complete: passit-server.exe"
 
 # Run the application
 run:

@@ -28,7 +28,7 @@ func TestRequireEnv_ReturnsValue(t *testing.T) {
 func TestConfig_Structure(t *testing.T) {
 	// Test that Config struct has expected structure
 	cfg := &Config{
-		App:         &AppConfig{Port: 8080, Env: "test"},
+		App:         &AppConfig{Port: 8080, ENV: "test"},
 		DB:          nil, // Would require full DB config
 		Auth:        nil, // Would require full Auth config
 		RedisClient: nil, // Would require full Redis config
@@ -36,17 +36,17 @@ func TestConfig_Structure(t *testing.T) {
 
 	assert.NotNil(t, cfg.App)
 	assert.Equal(t, 8080, cfg.App.Port)
-	assert.Equal(t, "test", cfg.App.Env)
+	assert.Equal(t, "test", cfg.App.ENV)
 }
 
 func TestAppConfig_Values(t *testing.T) {
 	app := &AppConfig{
 		Port: 3000,
-		Env:  "development",
+		ENV:  "development",
 	}
 
 	assert.Equal(t, 3000, app.Port)
-	assert.Equal(t, "development", app.Env)
+	assert.Equal(t, "development", app.ENV)
 }
 
 func TestAppConfig_DefaultPort(t *testing.T) {
