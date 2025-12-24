@@ -36,7 +36,6 @@ npm run build  # Creates dist/ folder
 
 - **Backend Details:** [passIt-backend](./passIt-backend)
 - **Frontend Details:** [passIt-ui](./passIt-ui)
-- **Deployment Guide:** [DEPLOYMENT.md](./DEPLOYMENT.md)
 
 ## Key Features
 
@@ -75,5 +74,3 @@ npm run build  # Creates dist/ folder
 ### Production
 - Backend: `ENV=production` (disables Swagger, release mode)
 - Frontend: Static build in `dist/` folder
-
-See [DEPLOYMENT.md](./DEPLOYMENT.md) for complete deployment instructions.
